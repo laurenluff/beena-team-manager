@@ -31,3 +31,7 @@ Upload this folder to a static host such as Netlify, Vercel, or GitHub Pages.
 ## 5. Use on devices
 
 Open the hosted URL on your laptop and phone, sign in with the same email address, and the roster plus attendance will sync.
+
+## Shared access and lineups
+
+Run `shared_access_upgrade.sql` after changes that add shared users or lineup syncing. Then add approved emails to `public.team_members`.

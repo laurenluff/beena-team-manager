@@ -17,6 +17,7 @@ create table if not exists public.players (
   team_id text not null references public.teams(id) on delete cascade,
   user_id uuid references auth.users(id) on delete set null,
   name text not null,
+  nickname text default '',
   number text default '',
   position text default 'Utility',
   status text default 'Available',
@@ -34,6 +35,16 @@ create table if not exists public.attendance (
   primary key (team_id, player_id, round, session)
 );
 
+create table if not exists public.lineups (
+  team_id text not null references public.teams(id) on delete cascade,
+  user_id uuid references auth.users(id) on delete set null,
+  round integer not null check (round between 1 and 16),
+  spot_id text not null,
+  player_id uuid not null references public.players(id) on delete cascade,
+  created_at timestamptz default now(),
+  primary key (team_id, round, spot_id)
+);
+
 insert into public.teams (id, name)
 values ('beena', 'Murrumbeena Lions')
 on conflict (id) do update set name = excluded.name;
@@ -43,6 +54,9 @@ alter table public.players
 
 alter table public.players
   add column if not exists user_id uuid references auth.users(id) on delete set null;
+
+alter table public.players
+  add column if not exists nickname text default '';
 
 update public.players set team_id = 'beena' where team_id is null;
 
@@ -79,6 +93,7 @@ alter table public.teams enable row level security;
 alter table public.team_members enable row level security;
 alter table public.players enable row level security;
 alter table public.attendance enable row level security;
+alter table public.lineups enable row level security;
 
 drop policy if exists "Members can read their teams" on public.teams;
 drop policy if exists "Members can read team members" on public.team_members;
@@ -90,6 +105,10 @@ drop policy if exists "Members can read attendance" on public.attendance;
 drop policy if exists "Members can insert attendance" on public.attendance;
 drop policy if exists "Members can update attendance" on public.attendance;
 drop policy if exists "Members can delete attendance" on public.attendance;
+drop policy if exists "Members can read lineups" on public.lineups;
+drop policy if exists "Members can insert lineups" on public.lineups;
+drop policy if exists "Members can update lineups" on public.lineups;
+drop policy if exists "Members can delete lineups" on public.lineups;
 
 create policy "Members can read their teams"
   on public.teams for select
@@ -195,6 +214,53 @@ create policy "Members can delete attendance"
     exists (
       select 1 from public.team_members
       where team_members.team_id = attendance.team_id
+      and lower(team_members.email) = lower(auth.jwt() ->> 'email')
+    )
+  );
+
+create policy "Members can read lineups"
+  on public.lineups for select
+  using (
+    exists (
+      select 1 from public.team_members
+      where team_members.team_id = lineups.team_id
+      and lower(team_members.email) = lower(auth.jwt() ->> 'email')
+    )
+  );
+
+create policy "Members can insert lineups"
+  on public.lineups for insert
+  with check (
+    exists (
+      select 1 from public.team_members
+      where team_members.team_id = lineups.team_id
+      and lower(team_members.email) = lower(auth.jwt() ->> 'email')
+    )
+  );
+
+create policy "Members can update lineups"
+  on public.lineups for update
+  using (
+    exists (
+      select 1 from public.team_members
+      where team_members.team_id = lineups.team_id
+      and lower(team_members.email) = lower(auth.jwt() ->> 'email')
+    )
+  )
+  with check (
+    exists (
+      select 1 from public.team_members
+      where team_members.team_id = lineups.team_id
+      and lower(team_members.email) = lower(auth.jwt() ->> 'email')
+    )
+  );
+
+create policy "Members can delete lineups"
+  on public.lineups for delete
+  using (
+    exists (
+      select 1 from public.team_members
+      where team_members.team_id = lineups.team_id
       and lower(team_members.email) = lower(auth.jwt() ->> 'email')
     )
   );
