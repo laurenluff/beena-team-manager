@@ -34,7 +34,8 @@ const syncTitle = document.querySelector("#syncTitle");
 const syncStatus = document.querySelector("#syncStatus");
 const SpeechRecognition = globalThis.SpeechRecognition || globalThis.webkitSpeechRecognition;
 const supabaseSettings = globalThis.FOOTY_SUPABASE || {};
-const hasCloudSettings = Boolean(supabaseSettings.url && supabaseSettings.anonKey);
+const teamId = supabaseSettings.teamId || "beena";
+const hasCloudSettings = Boolean(supabaseSettings.url && supabaseSettings.anonKey && teamId);
 const cloudClient = hasCloudSettings && globalThis.supabase
   ? globalThis.supabase.createClient(supabaseSettings.url, supabaseSettings.anonKey)
   : null;
@@ -503,8 +504,7 @@ async function setupCloudSync() {
     currentUser = session?.user || null;
     updateSyncUi();
     if (currentUser) {
-      await syncLocalToCloud();
-      await loadCloudData();
+      await initializeCloudData();
     }
   });
 
@@ -513,8 +513,7 @@ async function setupCloudSync() {
   updateSyncUi();
 
   if (currentUser) {
-    await syncLocalToCloud();
-    await loadCloudData();
+    await initializeCloudData();
   }
 }
 
@@ -525,17 +524,26 @@ function updateSyncUi() {
     loginForm.hidden = true;
     signOutButton.hidden = false;
     syncTitle.textContent = "Cloud Sync On";
-    syncStatus.textContent = `Signed in as ${currentUser.email}. Changes sync to phone and laptop.`;
+    syncStatus.textContent = `Signed in as ${currentUser.email}. Changes sync with approved Beena team members.`;
   } else {
     loginForm.hidden = false;
     signOutButton.hidden = true;
     syncTitle.textContent = "Cloud Sync";
-    syncStatus.textContent = "Sign in with the same email on each device.";
+    syncStatus.textContent = "Sign in with an approved team email.";
+  }
+}
+
+async function initializeCloudData() {
+  const hasCloudRoster = await loadCloudData();
+
+  if (!hasCloudRoster) {
+    await syncLocalToCloud();
+    await loadCloudData();
   }
 }
 
 async function loadCloudData() {
-  if (!currentUser) return;
+  if (!currentUser) return false;
 
   syncStatus.textContent = "Loading cloud data...";
 
@@ -543,17 +551,17 @@ async function loadCloudData() {
     cloudClient
       .from("players")
       .select("id,name,number,position,status,notes")
-      .eq("user_id", currentUser.id)
+      .eq("team_id", teamId)
       .order("name", { ascending: true }),
     cloudClient
       .from("attendance")
       .select("player_id,round,session")
-      .eq("user_id", currentUser.id)
+      .eq("team_id", teamId)
   ]);
 
   if (playersError || attendanceError) {
     syncStatus.textContent = `Cloud load failed: ${(playersError || attendanceError).message}`;
-    return;
+    return false;
   }
 
   if (cloudPlayers.length) {
@@ -575,6 +583,7 @@ async function loadCloudData() {
   }
 
   syncStatus.textContent = `Synced ${players.length} players.`;
+  return cloudPlayers.length > 0;
 }
 
 async function syncLocalToCloud() {
@@ -614,6 +623,7 @@ async function upsertCloudPlayers(playerList) {
 
   const rows = playerList.map((player) => ({
     id: player.id,
+    team_id: teamId,
     user_id: currentUser.id,
     name: player.name,
     number: player.number || "",
@@ -632,6 +642,7 @@ async function upsertCloudAttendance(rows) {
   if (!currentUser || !rows.length) return;
 
   const payload = rows.map((row) => ({
+    team_id: teamId,
     user_id: currentUser.id,
     player_id: row.playerId,
     round: row.round,
@@ -650,7 +661,7 @@ async function deleteCloudAttendance(playerId, round, session) {
   const { error } = await cloudClient
     .from("attendance")
     .delete()
-    .eq("user_id", currentUser.id)
+    .eq("team_id", teamId)
     .eq("player_id", playerId)
     .eq("round", round)
     .eq("session", session);
