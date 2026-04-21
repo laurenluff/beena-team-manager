@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Murrumbeena Lions Team Manager</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <header class="app-header">
+      <div class="brand-lockup">
+        <img class="club-logo" src="assets/murrumbeena-lions-logo.png" alt="Murrumbeena Lions club logo">
+        <div>
+          <p class="eyebrow">Murrumbeena Lions</p>
+          <h1>Team Manager</h1>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button class="icon-button" id="exportCsv" type="button" title="Export season CSV" aria-label="Export season attendance as CSV">
+          <span aria-hidden="true">↓</span>
+        </button>
+        <label class="icon-button file-button" title="Import roster CSV" aria-label="Import player roster from CSV">
+          <span aria-hidden="true">↑</span>
+          <input id="importCsv" type="file" accept=".csv,text/csv">
+        </label>
+      </div>
+    </header>
+
+    <main>
+      <section class="sync-panel" aria-label="Cloud sync">
+        <div>
+          <p class="eyebrow dark">Cloud Sync</p>
+          <h2 id="syncTitle">Local Mode</h2>
+          <p id="syncStatus">Add Supabase settings to sync between phone and laptop.</p>
+        </div>
+        <form class="sync-form" id="loginForm">
+          <input id="emailInput" type="email" autocomplete="email" placeholder="Email for login">
+          <button class="primary-button" type="submit">Send Login Link</button>
+        </form>
+        <button class="ghost-button" id="signOutButton" type="button" hidden>Sign Out</button>
+      </section>
+
+      <section class="round-header" aria-label="Round selector">
+        <div>
+          <p class="eyebrow dark">Season Attendance</p>
+          <h2 id="roundTitle">Round 1</h2>
+        </div>
+        <div class="round-grid" id="roundButtons" aria-label="Rounds 1 to 16"></div>
+      </section>
+
+      <section class="scoreboard" aria-label="Selected round summary">
+        <div class="summary-tile">
+          <span>Total Players</span>
+          <strong id="totalPlayers">0</strong>
+        </div>
+        <div class="summary-tile">
+          <span>Monday Training</span>
+          <strong id="mondayCount">0</strong>
+        </div>
+        <div class="summary-tile">
+          <span>Thursday Training</span>
+          <strong id="thursdayCount">0</strong>
+        </div>
+        <div class="summary-tile">
+          <span>Game Available</span>
+          <strong id="gameCount">0</strong>
+        </div>
+        <div class="summary-tile">
+          <span>All 3 Sessions</span>
+          <strong id="allSessionsCount">0</strong>
+        </div>
+      </section>
+
+      <section class="tracker-layout" aria-label="Attendance tracker">
+        <div class="session-panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow dark">Mark Attendance</p>
+              <h2 id="sessionTitle">Monday Training</h2>
+            </div>
+            <div class="session-tabs" id="sessionTabs" aria-label="Session selector">
+              <button class="is-active" type="button" data-session="monday">Monday</button>
+              <button type="button" data-session="thursday">Thursday</button>
+              <button type="button" data-session="game">Game Day</button>
+            </div>
+          </div>
+
+          <div class="search-field">
+            <span aria-hidden="true">⌕</span>
+            <input id="searchInput" type="search" placeholder="Search player">
+          </div>
+
+          <div class="voice-panel" aria-live="polite">
+            <button class="mic-button" id="micButton" type="button">
+              <span aria-hidden="true">●</span>
+              <strong>Speak Names</strong>
+            </button>
+            <div>
+              <p id="voiceStatus">Say player names to mark this round and session.</p>
+              <small id="voiceTranscript"></small>
+            </div>
+          </div>
+
+          <div class="player-grid" id="playerGrid" aria-label="Player attendance buttons"></div>
+          <div class="empty-state" id="emptyState">
+            <strong>No players match this search.</strong>
+            <span>Clear the search field to see the full roster.</span>
+          </div>
+        </div>
+
+        <aside class="roster-panel" aria-label="Roster tools">
+          <div class="panel-heading compact">
+            <div>
+              <p class="eyebrow dark">Roster</p>
+              <h2>Add Player</h2>
+            </div>
+          </div>
+          <form class="player-form" id="playerForm">
+            <label>
+              Name
+              <input id="nameInput" name="name" autocomplete="off" required placeholder="e.g. Jack Smith">
+            </label>
+            <div class="form-grid">
+              <label>
+                Number
+                <input id="numberInput" name="number" inputmode="numeric" pattern="[0-9]*" placeholder="12">
+              </label>
+              <label>
+                Position
+                <select id="positionInput" name="position">
+                  <option>Utility</option>
+                  <option>Forward</option>
+                  <option>Midfield</option>
+                  <option>Back</option>
+                  <option>Ruck</option>
+                </select>
+              </label>
+            </div>
+            <label>
+              Injury / notes
+              <input id="notesInput" name="notes" autocomplete="off" placeholder="Injury, availability note...">
+            </label>
+            <div class="form-actions">
+              <button class="primary-button" type="submit">Add Player</button>
+              <button class="ghost-button" id="clearForm" type="button">Clear</button>
+            </div>
+          </form>
+        </aside>
+      </section>
+
+      <section class="tables-layout" aria-label="Attendance tables">
+        <div class="table-wrap">
+          <div class="table-heading">
+            <div>
+              <p class="eyebrow dark">Selected Round</p>
+              <h2 id="roundTableTitle">Round 1 Table</h2>
+            </div>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Player</th>
+                <th scope="col">Monday</th>
+                <th scope="col">Thursday</th>
+                <th scope="col">Game Day</th>
+                <th scope="col">Notes</th>
+              </tr>
+            </thead>
+            <tbody id="roundTable"></tbody>
+          </table>
+        </div>
+
+        <div class="table-wrap">
+          <div class="table-heading">
+            <div>
+              <p class="eyebrow dark">Season</p>
+              <h2>Totals</h2>
+            </div>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Player</th>
+                <th scope="col">Mon</th>
+                <th scope="col">Thu</th>
+                <th scope="col">Game</th>
+                <th scope="col">Total</th>
+              </tr>
+            </thead>
+            <tbody id="seasonTable"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <template id="playerButtonTemplate">
+      <button class="player-card" type="button">
+        <span class="guernsey"></span>
+        <span>
+          <strong class="player-name"></strong>
+          <small class="player-meta"></small>
+        </span>
+      </button>
+    </template>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="config.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
