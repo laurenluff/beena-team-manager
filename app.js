@@ -52,7 +52,7 @@ let fixtures = loadFixtures();
 let selectedRound = 1;
 let selectedSession = "monday";
 let selectedPage = "manager";
-let selectedFixtureTeam = "All";
+let selectedFixtureTeams = [];
 let showPastFixtures = false;
 let selectedLineupPlayerId = null;
 let lineupNameMode = localStorage.getItem(lineupNameModeKey) || "full";
@@ -919,11 +919,19 @@ function renderFixtureFilters() {
   fixtureFilters.replaceChildren();
   ["All", ...fixtureTeams].forEach((team) => {
     const button = document.createElement("button");
+    const isAll = team === "All";
     button.type = "button";
     button.textContent = team;
-    button.classList.toggle("is-active", team === selectedFixtureTeam);
+    button.classList.toggle("is-active", isAll ? !selectedFixtureTeams.length : selectedFixtureTeams.includes(team));
+    button.setAttribute("aria-pressed", String(isAll ? !selectedFixtureTeams.length : selectedFixtureTeams.includes(team)));
     button.addEventListener("click", () => {
-      selectedFixtureTeam = team;
+      if (isAll) {
+        selectedFixtureTeams = [];
+      } else if (selectedFixtureTeams.includes(team)) {
+        selectedFixtureTeams = selectedFixtureTeams.filter((selectedTeam) => selectedTeam !== team);
+      } else {
+        selectedFixtureTeams = [...selectedFixtureTeams, team];
+      }
       renderFixtureFilters();
       renderFixtures();
     });
@@ -932,13 +940,14 @@ function renderFixtureFilters() {
 }
 
 function renderFixtures() {
+  const teamMatchesFilter = (fixture) => !selectedFixtureTeams.length || selectedFixtureTeams.includes(fixture.team);
   const visibleFixtures = sortedFixtures().filter((fixture) =>
-    (selectedFixtureTeam === "All" || fixture.team === selectedFixtureTeam) &&
+    teamMatchesFilter(fixture) &&
     (showPastFixtures || isUpcomingFixture(fixture))
   );
-  const upcomingCount = sortedFixtures().filter((fixture) => fixture.date >= getTodayDateString()).length;
+  const upcomingCount = sortedFixtures().filter((fixture) => teamMatchesFilter(fixture) && fixture.date >= getTodayDateString()).length;
   const hiddenPastCount = sortedFixtures().filter((fixture) =>
-    (selectedFixtureTeam === "All" || fixture.team === selectedFixtureTeam) &&
+    teamMatchesFilter(fixture) &&
     !isUpcomingFixture(fixture)
   ).length;
 
