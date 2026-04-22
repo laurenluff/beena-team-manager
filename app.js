@@ -57,7 +57,6 @@ let showPastFixtures = false;
 let selectedLineupPlayerId = null;
 let lineupNameMode = localStorage.getItem(lineupNameModeKey) || "full";
 let draggedLineupPlayerId = null;
-let pointerDragState = null;
 
 const form = document.querySelector("#playerForm");
 const pageButtons = document.querySelectorAll("[data-page]");
@@ -1230,7 +1229,7 @@ function renderLineup() {
       chip.type = "button";
       chip.className = "lineup-player-chip";
       chip.classList.toggle("is-picked", selectedLineupPlayerId === player.id);
-      chip.draggable = false;
+      chip.draggable = true;
       chip.dataset.playerId = player.id;
       name.className = "lineup-chip-name";
       name.textContent = getLineupDisplayName(player);
@@ -1240,12 +1239,7 @@ function renderLineup() {
       chip.append(name, training);
       chip.addEventListener("dragstart", handleLineupPlayerDragStart);
       chip.addEventListener("dragend", handleLineupDragEnd);
-      chip.addEventListener("pointerdown", handleLineupPointerDown);
       chip.addEventListener("click", () => {
-        if (chip.dataset.pointerDragged === "true") {
-          chip.dataset.pointerDragged = "";
-          return;
-        }
         selectedLineupPlayerId = selectedLineupPlayerId === player.id ? null : player.id;
         renderLineup();
       });
@@ -1318,81 +1312,6 @@ function handleLineupDrop(event) {
   if (!playerId || !spotId) return;
 
   assignLineupPlayer(playerId, spotId);
-}
-
-function handleLineupPointerDown(event) {
-  if (event.pointerType === "mouse" && event.button !== 0) return;
-
-  const chip = event.currentTarget;
-  const playerId = chip.dataset.playerId;
-  const ghost = chip.cloneNode(true);
-  const startX = event.clientX;
-  const startY = event.clientY;
-
-  pointerDragState = {
-    chip,
-    ghost,
-    playerId,
-    startX,
-    startY,
-    moved: false
-  };
-
-  ghost.classList.add("lineup-drag-ghost");
-  ghost.style.left = `${startX}px`;
-  ghost.style.top = `${startY}px`;
-  ghost.style.opacity = "0";
-  document.body.append(ghost);
-  chip.setPointerCapture(event.pointerId);
-  chip.addEventListener("pointermove", handleLineupPointerMove);
-  chip.addEventListener("pointerup", handleLineupPointerUp);
-  chip.addEventListener("pointercancel", cancelLineupPointerDrag);
-}
-
-function handleLineupPointerMove(event) {
-  if (!pointerDragState) return;
-
-  const distance = Math.hypot(event.clientX - pointerDragState.startX, event.clientY - pointerDragState.startY);
-  if (distance > 6) {
-    pointerDragState.moved = true;
-    pointerDragState.chip.dataset.pointerDragged = "true";
-    pointerDragState.ghost.style.opacity = "0.95";
-  }
-
-  pointerDragState.ghost.style.left = `${event.clientX}px`;
-  pointerDragState.ghost.style.top = `${event.clientY}px`;
-  highlightLineupDropTarget(event.clientX, event.clientY);
-}
-
-function handleLineupPointerUp(event) {
-  if (!pointerDragState) return;
-
-  const target = document.elementFromPoint(event.clientX, event.clientY)?.closest(".lineup-spot");
-  const { chip, playerId, moved } = pointerDragState;
-  cancelLineupPointerDrag();
-
-  if (moved && target?.dataset.spotId) {
-    assignLineupPlayer(playerId, target.dataset.spotId);
-  } else {
-    chip.dataset.pointerDragged = "";
-  }
-}
-
-function cancelLineupPointerDrag() {
-  if (!pointerDragState) return;
-
-  const { chip, ghost } = pointerDragState;
-  ghost.remove();
-  chip.removeEventListener("pointermove", handleLineupPointerMove);
-  chip.removeEventListener("pointerup", handleLineupPointerUp);
-  chip.removeEventListener("pointercancel", cancelLineupPointerDrag);
-  document.querySelectorAll(".lineup-spot.is-drag-over").forEach((spot) => spot.classList.remove("is-drag-over"));
-  pointerDragState = null;
-}
-
-function highlightLineupDropTarget(x, y) {
-  document.querySelectorAll(".lineup-spot.is-drag-over").forEach((spot) => spot.classList.remove("is-drag-over"));
-  document.elementFromPoint(x, y)?.closest(".lineup-spot")?.classList.add("is-drag-over");
 }
 
 async function assignLineupPlayer(playerId, spotId) {
@@ -1589,17 +1508,19 @@ function hasAttendance(playerId, round, session) {
 async function toggleAttendance(playerId, round, session) {
   const list = attendance[String(round)][session];
   const existingIndex = list.indexOf(playerId);
+  let syncPromise;
 
   if (existingIndex >= 0) {
     list.splice(existingIndex, 1);
-    await deleteCloudAttendance(playerId, round, session);
+    syncPromise = deleteCloudAttendance(playerId, round, session);
   } else {
     list.push(playerId);
-    await upsertCloudAttendance([{ playerId, round, session }]);
+    syncPromise = upsertCloudAttendance([{ playerId, round, session }]);
   }
 
   saveAttendance();
   render();
+  await syncPromise;
 }
 
 async function setGameAvailability(playerId, status) {
@@ -1608,37 +1529,39 @@ async function setGameAvailability(playerId, status) {
   const unavailableList = round[gameUnavailableSession];
   const availableIndex = availableList.indexOf(playerId);
   const unavailableIndex = unavailableList.indexOf(playerId);
+  const syncTasks = [];
 
   if (status === "available") {
     if (availableIndex >= 0) {
       availableList.splice(availableIndex, 1);
-      await deleteCloudAttendance(playerId, selectedRound, "game");
+      syncTasks.push(deleteCloudAttendance(playerId, selectedRound, "game"));
     } else {
       availableList.push(playerId);
       if (unavailableIndex >= 0) {
         unavailableList.splice(unavailableIndex, 1);
-        await deleteCloudAttendance(playerId, selectedRound, gameUnavailableSession);
+        syncTasks.push(deleteCloudAttendance(playerId, selectedRound, gameUnavailableSession));
       }
-      await upsertCloudAttendance([{ playerId, round: selectedRound, session: "game" }]);
+      syncTasks.push(upsertCloudAttendance([{ playerId, round: selectedRound, session: "game" }]));
     }
   }
 
   if (status === "unavailable") {
     if (unavailableIndex >= 0) {
       unavailableList.splice(unavailableIndex, 1);
-      await deleteCloudAttendance(playerId, selectedRound, gameUnavailableSession);
+      syncTasks.push(deleteCloudAttendance(playerId, selectedRound, gameUnavailableSession));
     } else {
       unavailableList.push(playerId);
       if (availableIndex >= 0) {
         availableList.splice(availableIndex, 1);
-        await deleteCloudAttendance(playerId, selectedRound, "game");
+        syncTasks.push(deleteCloudAttendance(playerId, selectedRound, "game"));
       }
-      await upsertCloudAttendance([{ playerId, round: selectedRound, session: gameUnavailableSession }]);
+      syncTasks.push(upsertCloudAttendance([{ playerId, round: selectedRound, session: gameUnavailableSession }]));
     }
   }
 
   saveAttendance();
   render();
+  await Promise.all(syncTasks);
 }
 
 function markAttendance(playerId, round, session) {
@@ -1865,26 +1788,37 @@ async function loadCloudData() {
 
   syncStatus.textContent = "Loading cloud data...";
 
+  let results;
+
+  try {
+    results = await Promise.all([
+      fetchCloudPlayers(),
+      cloudClient
+        .from("attendance")
+        .select("player_id,round,session")
+        .eq("team_id", teamId),
+      cloudClient
+        .from("lineups")
+        .select("round,spot_id,player_id")
+        .eq("team_id", teamId),
+      fetchCloudFixtures()
+    ]);
+  } catch (error) {
+    syncStatus.textContent = `Cloud load failed: ${error.message || error}`;
+    render();
+    return false;
+  }
+
   const [
-    { data: cloudPlayers, error: playersError },
-    { data: cloudAttendance, error: attendanceError },
-    { data: cloudLineups, error: lineupsError },
-    { data: cloudFixtures, error: fixturesError }
-  ] = await Promise.all([
-    fetchCloudPlayers(),
-    cloudClient
-      .from("attendance")
-      .select("player_id,round,session")
-      .eq("team_id", teamId),
-    cloudClient
-      .from("lineups")
-      .select("round,spot_id,player_id")
-      .eq("team_id", teamId),
-    fetchCloudFixtures()
-  ]);
+    { data: cloudPlayers = [], error: playersError },
+    { data: cloudAttendance = [], error: attendanceError },
+    { data: cloudLineups = [], error: lineupsError },
+    { data: cloudFixtures = [], error: fixturesError }
+  ] = results;
 
   if (playersError || attendanceError) {
     syncStatus.textContent = `Cloud load failed: ${(playersError || attendanceError).message}`;
+    render();
     return false;
   }
 
@@ -1918,6 +1852,8 @@ async function loadCloudData() {
       await upsertCloudFixtures(fixtures);
     }
     renderRoundButtons();
+    render();
+  } else {
     render();
   }
 

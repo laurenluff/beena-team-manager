@@ -771,7 +771,6 @@ button:focus-visible {
   font-weight: 850;
   text-align: left;
   cursor: grab;
-  touch-action: none;
   user-select: none;
 }
 
@@ -801,15 +800,6 @@ button:focus-visible {
   font-size: 0.76rem;
   font-weight: 950;
   text-align: center;
-}
-
-.lineup-drag-ghost {
-  position: fixed;
-  z-index: 2000;
-  width: 190px;
-  pointer-events: none;
-  transform: translate(-50%, -50%);
-  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.2);
 }
 
 .name-toggle {
