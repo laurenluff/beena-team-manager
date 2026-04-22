@@ -57,6 +57,7 @@ let showPastFixtures = false;
 let selectedLineupPlayerId = null;
 let lineupNameMode = localStorage.getItem(lineupNameModeKey) || "full";
 let draggedLineupPlayerId = null;
+let lineupPointerDrag = null;
 
 const form = document.querySelector("#playerForm");
 const pageButtons = document.querySelectorAll("[data-page]");
@@ -1210,7 +1211,7 @@ function renderLineup() {
       fitLineupSpotName(spot);
     }
     spot.title = player ? "Click to remove from lineup" : "Drop a player here";
-    spot.draggable = Boolean(player);
+    spot.draggable = false;
     spot.dataset.playerId = player?.id || "";
   });
 
@@ -1229,7 +1230,7 @@ function renderLineup() {
       chip.type = "button";
       chip.className = "lineup-player-chip";
       chip.classList.toggle("is-picked", selectedLineupPlayerId === player.id);
-      chip.draggable = true;
+      chip.draggable = false;
       chip.dataset.playerId = player.id;
       name.className = "lineup-chip-name";
       name.textContent = getLineupDisplayName(player);
@@ -1237,9 +1238,12 @@ function renderLineup() {
       training.textContent = `${getWeeklyTrainingCount(player.id)}/2`;
       training.title = "Training attendance this week";
       chip.append(name, training);
-      chip.addEventListener("dragstart", handleLineupPlayerDragStart);
-      chip.addEventListener("dragend", handleLineupDragEnd);
+      chip.addEventListener("pointerdown", startLineupPointerDrag);
       chip.addEventListener("click", () => {
+        if (chip.dataset.wasDragged === "true") {
+          chip.dataset.wasDragged = "";
+          return;
+        }
         selectedLineupPlayerId = selectedLineupPlayerId === player.id ? null : player.id;
         renderLineup();
       });
@@ -1312,6 +1316,77 @@ function handleLineupDrop(event) {
   if (!playerId || !spotId) return;
 
   assignLineupPlayer(playerId, spotId);
+}
+
+function startLineupPointerDrag(event) {
+  if (event.button !== undefined && event.button !== 0) return;
+
+  const chip = event.currentTarget;
+  const ghost = chip.cloneNode(true);
+
+  lineupPointerDrag = {
+    chip,
+    ghost,
+    playerId: chip.dataset.playerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    moved: false
+  };
+
+  ghost.classList.add("lineup-drag-ghost");
+  ghost.style.left = `${event.clientX}px`;
+  ghost.style.top = `${event.clientY}px`;
+  ghost.style.opacity = "0";
+  document.body.append(ghost);
+
+  document.addEventListener("pointermove", moveLineupPointerDrag);
+  document.addEventListener("pointerup", finishLineupPointerDrag, { once: true });
+  document.addEventListener("pointercancel", cancelLineupPointerDrag, { once: true });
+}
+
+function moveLineupPointerDrag(event) {
+  if (!lineupPointerDrag) return;
+
+  const distance = Math.hypot(event.clientX - lineupPointerDrag.startX, event.clientY - lineupPointerDrag.startY);
+  if (distance > 5) {
+    lineupPointerDrag.moved = true;
+    lineupPointerDrag.chip.dataset.wasDragged = "true";
+    lineupPointerDrag.ghost.style.opacity = "0.96";
+  }
+
+  lineupPointerDrag.ghost.style.left = `${event.clientX}px`;
+  lineupPointerDrag.ghost.style.top = `${event.clientY}px`;
+  markLineupDropTarget(event.clientX, event.clientY);
+}
+
+function finishLineupPointerDrag(event) {
+  if (!lineupPointerDrag) return;
+
+  const target = document.elementFromPoint(event.clientX, event.clientY)?.closest(".lineup-spot");
+  const { moved, playerId } = lineupPointerDrag;
+  cleanupLineupPointerDrag();
+
+  if (moved && target?.dataset.spotId) {
+    assignLineupPlayer(playerId, target.dataset.spotId);
+  }
+}
+
+function cancelLineupPointerDrag() {
+  cleanupLineupPointerDrag();
+}
+
+function cleanupLineupPointerDrag() {
+  if (!lineupPointerDrag) return;
+
+  lineupPointerDrag.ghost.remove();
+  lineupPointerDrag = null;
+  document.removeEventListener("pointermove", moveLineupPointerDrag);
+  document.querySelectorAll(".lineup-spot.is-drag-over").forEach((spot) => spot.classList.remove("is-drag-over"));
+}
+
+function markLineupDropTarget(x, y) {
+  document.querySelectorAll(".lineup-spot.is-drag-over").forEach((spot) => spot.classList.remove("is-drag-over"));
+  document.elementFromPoint(x, y)?.closest(".lineup-spot")?.classList.add("is-drag-over");
 }
 
 async function assignLineupPlayer(playerId, spotId) {
