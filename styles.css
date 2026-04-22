@@ -688,6 +688,10 @@ button:focus-visible {
 }
 
 .lineup-player-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
   min-height: 40px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -697,6 +701,9 @@ button:focus-visible {
   font-size: 0.86rem;
   font-weight: 850;
   text-align: left;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
 }
 
 .lineup-player-chip:active {
@@ -708,6 +715,32 @@ button:focus-visible {
   color: var(--maroon-dark);
   background: var(--yellow);
   box-shadow: inset 0 0 0 2px rgba(103, 33, 70, 0.18);
+}
+
+.lineup-chip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lineup-chip-training {
+  flex: 0 0 auto;
+  min-width: 40px;
+  border-radius: 999px;
+  color: #fff;
+  background: var(--maroon);
+  padding: 4px 8px;
+  font-size: 0.76rem;
+  font-weight: 950;
+  text-align: center;
+}
+
+.lineup-drag-ghost {
+  position: fixed;
+  z-index: 2000;
+  width: 190px;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.2);
 }
 
 .name-toggle {
@@ -780,7 +813,8 @@ button:focus-visible {
 }
 
 .lineup-spot:hover,
-.lineup-spot:focus-visible {
+.lineup-spot:focus-visible,
+.lineup-spot.is-drag-over {
   border-color: rgba(255, 255, 255, 0.9);
   outline: none;
   box-shadow: 0 0 0 2px rgba(255, 205, 0, 0.55);

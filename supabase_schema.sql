@@ -58,6 +58,9 @@ alter table public.players
 alter table public.players
   add column if not exists nickname text default '';
 
+create unique index if not exists players_unique_team_name
+  on public.players (team_id, lower(btrim(name)));
+
 update public.players set team_id = 'beena' where team_id is null;
 
 alter table public.players

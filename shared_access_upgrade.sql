@@ -22,6 +22,9 @@ alter table public.players
 alter table public.players
   add column if not exists user_id uuid references auth.users(id) on delete set null;
 
+alter table public.players
+  add column if not exists nickname text default '';
+
 update public.players set team_id = 'beena' where team_id is null;
 
 alter table public.players
@@ -43,6 +46,9 @@ alter table public.attendance
 
 alter table public.attendance
   add primary key (team_id, player_id, round, session);
+
+create unique index if not exists players_unique_team_name
+  on public.players (team_id, lower(btrim(name)));
 
 create table if not exists public.lineups (
   team_id text not null references public.teams(id) on delete cascade,

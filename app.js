@@ -46,6 +46,8 @@ let selectedRound = 1;
 let selectedSession = "monday";
 let selectedLineupPlayerId = null;
 let lineupNameMode = localStorage.getItem(lineupNameModeKey) || "full";
+let draggedLineupPlayerId = null;
+let pointerDragState = null;
 
 const form = document.querySelector("#playerForm");
 const playerGrid = document.querySelector("#playerGrid");
@@ -132,6 +134,8 @@ if (!players.length) {
 mergeRoster();
 normalizeAttendance();
 normalizeLineups();
+dedupeLocalPlayers();
+selectLatestRoundWithData();
 renderLineupSpots();
 renderRoundButtons();
 render();
@@ -313,6 +317,17 @@ function normalizeLineups() {
   saveLineups();
 }
 
+function dedupeLocalPlayers() {
+  const { players: uniquePlayers, idMap } = dedupePlayersByName(players);
+  if (!idMap.size) return;
+
+  players = uniquePlayers;
+  remapLocalPlayerIds(idMap);
+  savePlayers();
+  saveAttendance();
+  saveLineups();
+}
+
 function getLineupSpotIds() {
   return lineupTemplateSpots.map((spot) => spot.id);
 }
@@ -328,7 +343,12 @@ function renderLineupSpots() {
     spot.style.top = `${templateSpot.y}%`;
     spot.style.width = `${templateSpot.w}%`;
     spot.style.height = `${templateSpot.h}%`;
-    spot.addEventListener("dragover", (event) => event.preventDefault());
+    spot.addEventListener("dragover", (event) => {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
+      spot.classList.add("is-drag-over");
+    });
+    spot.addEventListener("dragleave", () => spot.classList.remove("is-drag-over"));
     spot.addEventListener("drop", handleLineupDrop);
     spot.addEventListener("click", () => handleLineupSpotClick(spot.dataset.spotId));
     spot.addEventListener("dragstart", handleLineupSpotDragStart);
@@ -353,6 +373,26 @@ function renderRoundButtons() {
     });
     roundButtons.append(button);
   }
+}
+
+function selectLatestRoundWithData() {
+  selectedRound = getLatestRoundWithData();
+  selectedLineupPlayerId = null;
+}
+
+function getLatestRoundWithData() {
+  for (let round = roundCount; round >= 1; round -= 1) {
+    const roundAttendance = attendance[String(round)];
+    const roundLineup = lineups[String(round)] || {};
+    const hasAttendanceData = sessions.some((session) => roundAttendance?.[session]?.length);
+    const hasLineupData = Object.values(roundLineup).some(Boolean);
+
+    if (hasAttendanceData || hasLineupData) {
+      return round;
+    }
+  }
+
+  return 1;
 }
 
 function render() {
@@ -436,16 +476,30 @@ function renderLineup() {
 
   sortedPlayers()
     .filter((player) => gameAvailableIds.has(player.id) && !usedPlayerIds.has(player.id))
+    .sort((a, b) => getWeeklyTrainingCount(b.id) - getWeeklyTrainingCount(a.id) || a.name.localeCompare(b.name))
     .forEach((player) => {
       const chip = document.createElement("button");
+      const name = document.createElement("span");
+      const training = document.createElement("span");
       chip.type = "button";
       chip.className = "lineup-player-chip";
       chip.classList.toggle("is-picked", selectedLineupPlayerId === player.id);
-      chip.draggable = true;
+      chip.draggable = false;
       chip.dataset.playerId = player.id;
-      chip.textContent = getLineupDisplayName(player);
+      name.className = "lineup-chip-name";
+      name.textContent = getLineupDisplayName(player);
+      training.className = "lineup-chip-training";
+      training.textContent = `${getWeeklyTrainingCount(player.id)}/2`;
+      training.title = "Training attendance this week";
+      chip.append(name, training);
       chip.addEventListener("dragstart", handleLineupPlayerDragStart);
+      chip.addEventListener("dragend", handleLineupDragEnd);
+      chip.addEventListener("pointerdown", handleLineupPointerDown);
       chip.addEventListener("click", () => {
+        if (chip.dataset.pointerDragged === "true") {
+          chip.dataset.pointerDragged = "";
+          return;
+        }
         selectedLineupPlayerId = selectedLineupPlayerId === player.id ? null : player.id;
         renderLineup();
       });
@@ -470,25 +524,115 @@ function getLineupGroundNameLines(player) {
   return [firstName, rest.join(" ")].filter(Boolean);
 }
 
+function getWeeklyTrainingCount(playerId) {
+  return ["monday", "thursday"].filter((session) => hasAttendance(playerId, selectedRound, session)).length;
+}
+
 function handleLineupPlayerDragStart(event) {
+  draggedLineupPlayerId = event.currentTarget.dataset.playerId;
+  event.dataTransfer.effectAllowed = "move";
   event.dataTransfer.setData("text/plain", event.currentTarget.dataset.playerId);
 }
 
 function handleLineupSpotDragStart(event) {
   const playerId = event.currentTarget.dataset.playerId;
   if (playerId) {
+    draggedLineupPlayerId = playerId;
+    event.dataTransfer.effectAllowed = "move";
     event.dataTransfer.setData("text/plain", playerId);
   }
 }
 
+function handleLineupDragEnd() {
+  draggedLineupPlayerId = null;
+  document.querySelectorAll(".lineup-spot.is-drag-over").forEach((spot) => spot.classList.remove("is-drag-over"));
+}
+
 function handleLineupDrop(event) {
   event.preventDefault();
-  const playerId = event.dataTransfer.getData("text/plain");
+  const playerId = event.dataTransfer.getData("text/plain") || draggedLineupPlayerId;
   const spotId = event.currentTarget.dataset.spotId;
+  event.currentTarget.classList.remove("is-drag-over");
+  draggedLineupPlayerId = null;
 
   if (!playerId || !spotId) return;
 
   assignLineupPlayer(playerId, spotId);
+}
+
+function handleLineupPointerDown(event) {
+  if (event.pointerType === "mouse" && event.button !== 0) return;
+
+  const chip = event.currentTarget;
+  const playerId = chip.dataset.playerId;
+  const ghost = chip.cloneNode(true);
+  const startX = event.clientX;
+  const startY = event.clientY;
+
+  pointerDragState = {
+    chip,
+    ghost,
+    playerId,
+    startX,
+    startY,
+    moved: false
+  };
+
+  ghost.classList.add("lineup-drag-ghost");
+  ghost.style.left = `${startX}px`;
+  ghost.style.top = `${startY}px`;
+  ghost.style.opacity = "0";
+  document.body.append(ghost);
+  chip.setPointerCapture(event.pointerId);
+  chip.addEventListener("pointermove", handleLineupPointerMove);
+  chip.addEventListener("pointerup", handleLineupPointerUp);
+  chip.addEventListener("pointercancel", cancelLineupPointerDrag);
+}
+
+function handleLineupPointerMove(event) {
+  if (!pointerDragState) return;
+
+  const distance = Math.hypot(event.clientX - pointerDragState.startX, event.clientY - pointerDragState.startY);
+  if (distance > 6) {
+    pointerDragState.moved = true;
+    pointerDragState.chip.dataset.pointerDragged = "true";
+    pointerDragState.ghost.style.opacity = "0.95";
+  }
+
+  pointerDragState.ghost.style.left = `${event.clientX}px`;
+  pointerDragState.ghost.style.top = `${event.clientY}px`;
+  highlightLineupDropTarget(event.clientX, event.clientY);
+}
+
+function handleLineupPointerUp(event) {
+  if (!pointerDragState) return;
+
+  const target = document.elementFromPoint(event.clientX, event.clientY)?.closest(".lineup-spot");
+  const { chip, playerId, moved } = pointerDragState;
+  cancelLineupPointerDrag();
+
+  if (moved && target?.dataset.spotId) {
+    assignLineupPlayer(playerId, target.dataset.spotId);
+  } else {
+    chip.dataset.pointerDragged = "";
+  }
+}
+
+function cancelLineupPointerDrag() {
+  if (!pointerDragState) return;
+
+  const { chip, ghost } = pointerDragState;
+  ghost.remove();
+  chip.removeEventListener("pointermove", handleLineupPointerMove);
+  chip.removeEventListener("pointerup", handleLineupPointerUp);
+  chip.removeEventListener("pointercancel", cancelLineupPointerDrag);
+  document.querySelectorAll(".lineup-spot.is-drag-over").forEach((spot) => spot.classList.remove("is-drag-over"));
+  pointerDragState = null;
+}
+
+function highlightLineupDropTarget(x, y) {
+  document.querySelectorAll(".lineup-spot.is-drag-over").forEach((spot) => spot.classList.remove("is-drag-over"));
+  document.elementFromPoint(x, y)?.closest(".lineup-spot")?.classList.add("is-drag-over");
 }
 
 async function assignLineupPlayer(playerId, spotId) {
@@ -928,7 +1072,8 @@ async function loadCloudData() {
 
   if (cloudPlayers.length) {
     const localNicknames = new Map(players.map((player) => [player.id, player.nickname || ""]));
-    players = cloudPlayers.map((player) => ({
+    const { players: uniqueCloudPlayers, idMap } = dedupePlayersByName(cloudPlayers);
+    players = uniqueCloudPlayers.map((player) => ({
       id: player.id,
       name: player.name,
       nickname: player.nickname ?? localNicknames.get(player.id) ?? "",
@@ -939,13 +1084,15 @@ async function loadCloudData() {
       training: false,
       match: false
     }));
-    attendance = rowsToAttendance(cloudAttendance || []);
-    lineups = rowsToLineups(lineupsError ? [] : cloudLineups || []);
+    attendance = rowsToAttendance(remapCloudPlayerRows(cloudAttendance || [], idMap, "player_id"));
+    lineups = rowsToLineups(remapCloudPlayerRows(lineupsError ? [] : cloudLineups || [], idMap, "player_id"));
     normalizeAttendance();
     normalizeLineups();
+    selectLatestRoundWithData();
     savePlayers();
     saveAttendance();
     saveLineups();
+    renderRoundButtons();
     render();
   }
 
@@ -977,9 +1124,93 @@ async function syncLocalToCloud() {
   if (!currentUser) return;
 
   ensureCloudSafePlayerIds();
+  await mergeExistingCloudPlayers();
   await upsertCloudPlayers(players);
   await upsertCloudAttendance(attendanceToRows());
   await upsertCloudLineups(lineupsToRows());
+}
+
+async function mergeExistingCloudPlayers() {
+  const { data: cloudPlayers, error } = await fetchCloudPlayers();
+  if (error || !cloudPlayers?.length) return;
+
+  const cloudByName = new Map();
+  dedupePlayersByName(cloudPlayers).players.forEach((player) => {
+    cloudByName.set(normalizePlayerNameKey(player.name), player);
+  });
+
+  const idMap = new Map();
+  players = players.map((player) => {
+    const cloudPlayer = cloudByName.get(normalizePlayerNameKey(player.name));
+    if (!cloudPlayer) return player;
+
+    if (player.id !== cloudPlayer.id) {
+      idMap.set(player.id, cloudPlayer.id);
+    }
+
+    return {
+      ...player,
+      id: cloudPlayer.id,
+      name: cloudPlayer.name || player.name,
+      nickname: cloudPlayer.nickname || player.nickname || "",
+      number: cloudPlayer.number || player.number || "",
+      position: cloudPlayer.position || player.position || "Utility",
+      status: cloudPlayer.status || player.status || "Available",
+      notes: cloudPlayer.notes || player.notes || ""
+    };
+  });
+
+  remapLocalPlayerIds(idMap);
+  savePlayers();
+  saveAttendance();
+  saveLineups();
+}
+
+function dedupePlayersByName(playerList) {
+  const seen = new Map();
+  const idMap = new Map();
+
+  playerList.forEach((player) => {
+    const key = normalizePlayerNameKey(player.name);
+    if (!key || !seen.has(key)) {
+      seen.set(key, player);
+      return;
+    }
+
+    const keeper = seen.get(key);
+    idMap.set(player.id, keeper.id);
+    if (!keeper.nickname && player.nickname) keeper.nickname = player.nickname;
+    if (!keeper.number && player.number) keeper.number = player.number;
+    if ((!keeper.notes || keeper.notes.length < player.notes?.length) && player.notes) keeper.notes = player.notes;
+  });
+
+  return { players: [...seen.values()], idMap };
+}
+
+function remapCloudPlayerRows(rows, idMap, field) {
+  if (!idMap.size) return rows;
+  return rows.map((row) => ({ ...row, [field]: idMap.get(row[field]) || row[field] }));
+}
+
+function remapLocalPlayerIds(idMap) {
+  if (!idMap.size) return;
+
+  for (let round = 1; round <= roundCount; round += 1) {
+    sessions.forEach((session) => {
+      attendance[String(round)][session] = [...new Set(attendance[String(round)][session].map((playerId) =>
+        idMap.get(playerId) || playerId
+      ))];
+    });
+
+    Object.keys(lineups[String(round)] || {}).forEach((spotId) => {
+      const playerId = lineups[String(round)][spotId];
+      lineups[String(round)][spotId] = idMap.get(playerId) || playerId;
+    });
+  }
+}
+
+function normalizePlayerNameKey(name) {
+  return normalizeSpeechText(name).replaceAll(" ", "");
 }
 
 function ensureCloudSafePlayerIds() {
@@ -1158,7 +1389,7 @@ function rowsToAttendance(rows) {
   }
 
   rows.forEach((row) => {
-    if (nextAttendance[String(row.round)]?.[row.session]) {
+    if (nextAttendance[String(row.round)]?.[row.session] && !nextAttendance[String(row.round)][row.session].includes(row.player_id)) {
       nextAttendance[String(row.round)][row.session].push(row.player_id);
     }
   });
