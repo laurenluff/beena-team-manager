@@ -45,6 +45,12 @@ alter table public.attendance
   drop constraint if exists attendance_pkey;
 
 alter table public.attendance
+  drop constraint if exists attendance_session_check;
+
+alter table public.attendance
+  add constraint attendance_session_check check (session in ('monday', 'thursday', 'game', 'game_unavailable'));
+
+alter table public.attendance
   add primary key (team_id, player_id, round, session);
 
 create unique index if not exists players_unique_team_name
@@ -60,11 +66,26 @@ create table if not exists public.lineups (
   primary key (team_id, round, spot_id)
 );
 
+create table if not exists public.fixtures (
+  id text primary key,
+  team_id text not null references public.teams(id) on delete cascade,
+  user_id uuid references auth.users(id) on delete set null,
+  round text default '',
+  date date not null,
+  time time,
+  team text not null,
+  opponent text not null,
+  venue text not null,
+  notes text default '',
+  created_at timestamptz default now()
+);
+
 alter table public.teams enable row level security;
 alter table public.team_members enable row level security;
 alter table public.players enable row level security;
 alter table public.attendance enable row level security;
 alter table public.lineups enable row level security;
+alter table public.fixtures enable row level security;
 
 drop policy if exists "Members can read their teams" on public.teams;
 drop policy if exists "Members can read team members" on public.team_members;
@@ -80,6 +101,10 @@ drop policy if exists "Members can read lineups" on public.lineups;
 drop policy if exists "Members can insert lineups" on public.lineups;
 drop policy if exists "Members can update lineups" on public.lineups;
 drop policy if exists "Members can delete lineups" on public.lineups;
+drop policy if exists "Members can read fixtures" on public.fixtures;
+drop policy if exists "Members can insert fixtures" on public.fixtures;
+drop policy if exists "Members can update fixtures" on public.fixtures;
+drop policy if exists "Members can delete fixtures" on public.fixtures;
 
 create policy "Members can read their teams"
   on public.teams for select
@@ -232,6 +257,53 @@ create policy "Members can delete lineups"
     exists (
       select 1 from public.team_members
       where team_members.team_id = lineups.team_id
+      and lower(team_members.email) = lower(auth.jwt() ->> 'email')
+    )
+  );
+
+create policy "Members can read fixtures"
+  on public.fixtures for select
+  using (
+    exists (
+      select 1 from public.team_members
+      where team_members.team_id = fixtures.team_id
+      and lower(team_members.email) = lower(auth.jwt() ->> 'email')
+    )
+  );
+
+create policy "Members can insert fixtures"
+  on public.fixtures for insert
+  with check (
+    exists (
+      select 1 from public.team_members
+      where team_members.team_id = fixtures.team_id
+      and lower(team_members.email) = lower(auth.jwt() ->> 'email')
+    )
+  );
+
+create policy "Members can update fixtures"
+  on public.fixtures for update
+  using (
+    exists (
+      select 1 from public.team_members
+      where team_members.team_id = fixtures.team_id
+      and lower(team_members.email) = lower(auth.jwt() ->> 'email')
+    )
+  )
+  with check (
+    exists (
+      select 1 from public.team_members
+      where team_members.team_id = fixtures.team_id
+      and lower(team_members.email) = lower(auth.jwt() ->> 'email')
+    )
+  );
+
+create policy "Members can delete fixtures"
+  on public.fixtures for delete
+  using (
+    exists (
+      select 1 from public.team_members
+      where team_members.team_id = fixtures.team_id
       and lower(team_members.email) = lower(auth.jwt() ->> 'email')
     )
   );

@@ -115,7 +115,32 @@ h2 {
   position: relative;
   z-index: 1;
   display: flex;
+  align-items: center;
   gap: 10px;
+}
+
+.page-nav {
+  display: flex;
+  gap: 6px;
+  padding: 4px;
+  border: 1px solid rgba(255, 205, 0, 0.42);
+  border-radius: 8px;
+  background: rgba(66, 17, 43, 0.45);
+}
+
+.page-nav button {
+  min-height: 38px;
+  border: 0;
+  border-radius: 6px;
+  color: #fff;
+  background: transparent;
+  padding: 0 12px;
+  font-weight: 900;
+}
+
+.page-nav button.is-active {
+  color: var(--maroon-dark);
+  background: var(--yellow);
 }
 
 .icon-button {
@@ -630,6 +655,12 @@ button:focus-visible {
   box-shadow: inset 0 0 0 2px var(--yellow), 0 10px 18px rgba(103, 33, 70, 0.12);
 }
 
+.player-card.is-unavailable {
+  border-color: #d88989;
+  background: #fff0f0;
+  box-shadow: inset 0 0 0 2px #efb4b4, 0 10px 18px rgba(103, 33, 70, 0.08);
+}
+
 .player-card strong,
 .player-card small {
   display: block;
@@ -638,6 +669,44 @@ button:focus-visible {
 .player-card small {
   margin-top: 3px;
   color: var(--muted);
+}
+
+.availability-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.availability-actions {
+  display: flex;
+  grid-column: auto;
+  gap: 6px;
+}
+
+.availability-button {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border: 1px solid rgba(103, 33, 70, 0.18);
+  border-radius: 50%;
+  color: var(--maroon);
+  background: #fff;
+  font-size: 1.2rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.availability-button.available.is-active {
+  border-color: #15803d;
+  color: #fff;
+  background: #15803d;
+}
+
+.availability-button.unavailable.is-active {
+  border-color: #b42323;
+  color: #fff;
+  background: #b42323;
 }
 
 .tables-layout {
@@ -807,8 +876,7 @@ button:focus-visible {
   line-height: 0.95;
   text-transform: uppercase;
   text-align: center;
-  white-space: normal;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
   cursor: pointer;
 }
 
@@ -828,9 +896,10 @@ button:focus-visible {
 
 .lineup-name-line {
   display: block;
-  max-width: 100%;
+  width: 100%;
   overflow: hidden;
   text-overflow: clip;
+  white-space: nowrap;
 }
 
 [hidden] {
@@ -910,6 +979,11 @@ th {
   font-weight: 900;
 }
 
+.is-no {
+  color: var(--maroon);
+  font-weight: 900;
+}
+
 .player-cell {
   display: flex;
   align-items: center;
@@ -956,6 +1030,196 @@ th {
   display: block;
   margin-top: 2px;
   color: var(--muted);
+}
+
+.fixtures-page {
+  display: grid;
+  gap: 16px;
+}
+
+.fixtures-page[hidden] {
+  display: none;
+}
+
+.fixtures-hero,
+.fixtures-calendar {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: var(--shadow);
+}
+
+.fixtures-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px;
+}
+
+.fixtures-summary {
+  color: var(--maroon);
+  font-weight: 900;
+}
+
+.fixtures-layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+.fixtures-calendar {
+  padding: 16px;
+}
+
+.fixture-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.fixture-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.fixture-filters button {
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--maroon);
+  background: #fff;
+  padding: 0 12px;
+  font-weight: 900;
+}
+
+.fixture-filters button.is-active {
+  border-color: var(--yellow);
+  color: var(--maroon-dark);
+  background: var(--yellow);
+}
+
+.fixture-past-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--maroon);
+  background: #fbf6e4;
+  padding: 0 12px;
+  font-size: 0.86rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.fixture-past-toggle input {
+  width: auto;
+  min-height: auto;
+}
+
+.fixture-days {
+  display: grid;
+  gap: 14px;
+}
+
+.fixture-day {
+  display: grid;
+  gap: 8px;
+}
+
+.fixture-day-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--line);
+}
+
+.fixture-day-heading h3 {
+  margin: 0;
+  color: var(--maroon);
+  font-size: 1.05rem;
+}
+
+.fixture-day-heading span {
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.fixture-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-left: 6px solid var(--maroon);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.fixture-card.is-home {
+  border-left-color: var(--yellow);
+  background: #fffbea;
+}
+
+.fixture-team-label,
+.fixture-location {
+  color: var(--maroon);
+  font-size: 0.78rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.fixture-card strong {
+  display: block;
+  margin: 2px 0;
+  font-size: 1.1rem;
+}
+
+.fixture-card small {
+  color: var(--muted);
+  font-weight: 750;
+}
+
+.fixture-location {
+  border-radius: 999px;
+  background: #fbf6e4;
+  padding: 7px 10px;
+  text-align: center;
+}
+
+.fixture-card.is-home .fixture-location {
+  color: var(--maroon-dark);
+  background: var(--yellow);
+}
+
+.fixture-card-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.fixture-empty {
+  margin: 0;
+}
+
+.fixture-round-pill {
+  min-height: 34px;
+  border: 0;
+  border-radius: 999px;
+  color: var(--maroon);
+  background: #fbf6e4;
+  padding: 0 10px;
+  font-size: 0.78rem;
+  font-weight: 950;
 }
 
 .status-select {
@@ -1050,6 +1314,10 @@ th {
     grid-template-columns: 1fr;
   }
 
+  .fixtures-layout {
+    grid-template-columns: 1fr;
+  }
+
   .lineup-board {
     grid-template-columns: 1fr;
   }
@@ -1091,6 +1359,20 @@ th {
   .app-header {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .header-actions {
+    align-items: stretch;
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  .page-nav {
+    flex: 1 1 100%;
+  }
+
+  .page-nav button {
+    flex: 1;
   }
 
   .brand-lockup {
@@ -1140,6 +1422,18 @@ th {
 
   .player-grid {
     grid-template-columns: 1fr;
+  }
+
+  .fixtures-hero,
+  .fixture-toolbar,
+  .fixture-card {
+    align-items: stretch;
+    flex-direction: column;
+    grid-template-columns: 1fr;
+  }
+
+  .fixture-card-actions {
+    justify-content: flex-start;
   }
 
   .form-grid {

@@ -16,6 +16,10 @@
         </div>
       </div>
       <div class="header-actions">
+        <nav class="page-nav" aria-label="Main pages">
+          <button class="is-active" type="button" data-page="manager">Team Manager</button>
+          <button type="button" data-page="fixtures">Fixtures</button>
+        </nav>
         <button class="icon-button" id="openPlayerModal" type="button" title="Player menu" aria-label="Open player menu">
           <span aria-hidden="true">☰</span>
         </button>
@@ -43,6 +47,7 @@
         <button class="ghost-button" id="signOutButton" type="button" hidden>Sign Out</button>
       </section>
 
+      <div id="managerPage">
       <section class="round-header" aria-label="Round selector">
         <div>
           <p class="eyebrow dark">Season Attendance</p>
@@ -175,6 +180,30 @@
             </thead>
             <tbody id="seasonTable"></tbody>
           </table>
+        </div>
+      </section>
+      </div>
+
+      <section class="fixtures-page" id="fixturesPage" aria-label="Fixtures calendar" hidden>
+        <div class="fixtures-hero">
+          <div>
+            <p class="eyebrow dark">Club Calendar</p>
+            <h2>Fixtures</h2>
+          </div>
+          <div class="fixtures-summary" id="fixturesSummary"></div>
+        </div>
+
+        <div class="fixtures-layout">
+          <section class="fixtures-calendar" aria-label="Fixture list by date">
+            <div class="fixture-toolbar">
+              <div class="fixture-filters" id="fixtureFilters" aria-label="Team filters"></div>
+              <label class="fixture-past-toggle">
+                <input id="showPastFixtures" type="checkbox">
+                Show past games
+              </label>
+            </div>
+            <div class="fixture-days" id="fixtureDays"></div>
+          </section>
         </div>
       </section>
     </main>
