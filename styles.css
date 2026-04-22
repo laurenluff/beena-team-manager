@@ -883,10 +883,15 @@ button:focus-visible {
 
 .lineup-spot:hover,
 .lineup-spot:focus-visible,
-.lineup-spot.is-drag-over {
+.lineup-spot.is-drag-over,
+.lineup-spot.is-ready {
   border-color: rgba(255, 255, 255, 0.9);
   outline: none;
   box-shadow: 0 0 0 2px rgba(255, 205, 0, 0.55);
+}
+
+.lineup-spot.is-ready {
+  background: rgba(255, 205, 0, 0.22);
 }
 
 .lineup-spot.has-player {

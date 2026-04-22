@@ -1192,7 +1192,7 @@ function createGameAvailabilityCard(player) {
 }
 
 function renderLineup() {
-  const roundLineup = lineups[String(selectedRound)] || {};
+  const roundLineup = getRoundLineup();
   const usedPlayerIds = new Set(Object.values(roundLineup).filter(Boolean));
   const gameAvailableIds = new Set(attendance[String(selectedRound)]?.game || []);
 
@@ -1200,6 +1200,7 @@ function renderLineup() {
     const spot = document.querySelector(`[data-spot-id="${spotId}"]`);
     const player = players.find((item) => item.id === roundLineup[spotId]);
     spot.classList.toggle("has-player", Boolean(player));
+    spot.classList.toggle("is-ready", Boolean(selectedLineupPlayerId) && !player);
     spot.replaceChildren();
     if (player) {
       getLineupGroundNameLines(player).forEach((line) => {
@@ -1230,7 +1231,7 @@ function renderLineup() {
       chip.type = "button";
       chip.className = "lineup-player-chip";
       chip.classList.toggle("is-picked", selectedLineupPlayerId === player.id);
-      chip.draggable = false;
+      chip.draggable = true;
       chip.dataset.playerId = player.id;
       name.className = "lineup-chip-name";
       name.textContent = getLineupDisplayName(player);
@@ -1239,6 +1240,8 @@ function renderLineup() {
       training.title = "Training attendance this week";
       chip.append(name, training);
       chip.addEventListener("pointerdown", startLineupPointerDrag);
+      chip.addEventListener("dragstart", handleLineupPlayerDragStart);
+      chip.addEventListener("dragend", handleLineupDragEnd);
       chip.addEventListener("click", () => {
         if (chip.dataset.wasDragged === "true") {
           chip.dataset.wasDragged = "";
@@ -1249,6 +1252,11 @@ function renderLineup() {
       });
       lineupPlayerList.append(chip);
     });
+}
+
+function getRoundLineup(round = selectedRound) {
+  lineups[String(round)] ||= {};
+  return lineups[String(round)];
 }
 
 function getLineupDisplayName(player) {
@@ -1321,7 +1329,11 @@ function handleLineupDrop(event) {
 function startLineupPointerDrag(event) {
   if (event.button !== undefined && event.button !== 0) return;
 
+  event.preventDefault();
   const chip = event.currentTarget;
+  selectedLineupPlayerId = chip.dataset.playerId;
+  renderLineup();
+
   const ghost = chip.cloneNode(true);
 
   lineupPointerDrag = {
@@ -1332,6 +1344,14 @@ function startLineupPointerDrag(event) {
     startY: event.clientY,
     moved: false
   };
+
+  if (chip.setPointerCapture) {
+    try {
+      chip.setPointerCapture(event.pointerId);
+    } catch {
+      // Some browsers do not allow pointer capture after a re-render.
+    }
+  }
 
   ghost.classList.add("lineup-drag-ghost");
   ghost.style.left = `${event.clientX}px`;
@@ -1362,7 +1382,7 @@ function moveLineupPointerDrag(event) {
 function finishLineupPointerDrag(event) {
   if (!lineupPointerDrag) return;
 
-  const target = document.elementFromPoint(event.clientX, event.clientY)?.closest(".lineup-spot");
+  const target = getLineupSpotAtPoint(event.clientX, event.clientY);
   const { moved, playerId } = lineupPointerDrag;
   cleanupLineupPointerDrag();
 
@@ -1386,11 +1406,21 @@ function cleanupLineupPointerDrag() {
 
 function markLineupDropTarget(x, y) {
   document.querySelectorAll(".lineup-spot.is-drag-over").forEach((spot) => spot.classList.remove("is-drag-over"));
-  document.elementFromPoint(x, y)?.closest(".lineup-spot")?.classList.add("is-drag-over");
+  getLineupSpotAtPoint(x, y)?.classList.add("is-drag-over");
+}
+
+function getLineupSpotAtPoint(x, y) {
+  const directTarget = document.elementFromPoint(x, y)?.closest(".lineup-spot");
+  if (directTarget) return directTarget;
+
+  return [...document.querySelectorAll(".lineup-spot")].find((spot) => {
+    const rect = spot.getBoundingClientRect();
+    return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+  });
 }
 
 async function assignLineupPlayer(playerId, spotId) {
-  const roundLineup = lineups[String(selectedRound)];
+  const roundLineup = getRoundLineup();
 
   Object.keys(roundLineup).forEach((key) => {
     if (roundLineup[key] === playerId) {
@@ -1401,8 +1431,8 @@ async function assignLineupPlayer(playerId, spotId) {
   roundLineup[spotId] = playerId;
   selectedLineupPlayerId = null;
   saveLineups();
-  await upsertCloudLineups([{ round: selectedRound, spotId, playerId }]);
   renderLineup();
+  await upsertCloudLineups([{ round: selectedRound, spotId, playerId }]);
 }
 
 function handleLineupSpotClick(spotId) {
@@ -1414,12 +1444,12 @@ function handleLineupSpotClick(spotId) {
 }
 
 async function removeLineupPlayer(spotId) {
-  const roundLineup = lineups[String(selectedRound)];
+  const roundLineup = getRoundLineup();
   if (!roundLineup[spotId]) return;
   delete roundLineup[spotId];
   saveLineups();
-  await deleteCloudLineupSpot(selectedRound, spotId);
   renderLineup();
+  await deleteCloudLineupSpot(selectedRound, spotId);
 }
 
 function renderCrmList() {
