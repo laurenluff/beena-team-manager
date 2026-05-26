@@ -85,7 +85,7 @@ const micButton = document.querySelector("#micButton");
 const voiceStatus = document.querySelector("#voiceStatus");
 const voiceTranscript = document.querySelector("#voiceTranscript");
 const loginForm = document.querySelector("#loginForm");
-const emailInput = document.querySelector("#emailInput");
+const passwordInput = document.querySelector("#passwordInput");
 const signOutButton = document.querySelector("#signOutButton");
 const syncTitle = document.querySelector("#syncTitle");
 const syncStatus = document.querySelector("#syncStatus");
@@ -96,6 +96,7 @@ const showPastFixturesInput = document.querySelector("#showPastFixtures");
 const SpeechRecognition = globalThis.SpeechRecognition || globalThis.webkitSpeechRecognition;
 const supabaseSettings = globalThis.FOOTY_SUPABASE || {};
 const teamId = supabaseSettings.teamId || "beena";
+const sharedLoginEmail = (supabaseSettings.sharedLoginEmail || "").trim().toLowerCase();
 const hasCloudSettings = Boolean(supabaseSettings.url && supabaseSettings.anonKey && teamId);
 const cloudClient = hasCloudSettings && globalThis.supabase
   ? globalThis.supabase.createClient(supabaseSettings.url, supabaseSettings.anonKey)
@@ -1847,19 +1848,24 @@ async function setupCloudSync() {
 
   loginForm.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const email = emailInput.value.trim();
-    if (!email) return;
+    const password = passwordInput.value.trim();
+    if (!sharedLoginEmail) {
+      syncStatus.textContent = "Add sharedLoginEmail to config.js before using the team password sign-in.";
+      return;
+    }
+    if (!password) return;
 
-    const { error } = await cloudClient.auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo: globalThis.location.href.split("#")[0]
-      }
+    const { error } = await cloudClient.auth.signInWithPassword({
+      email: sharedLoginEmail,
+      password
     });
 
+    if (!error) {
+      passwordInput.value = "";
+    }
     syncStatus.textContent = error
-      ? `Login link failed: ${error.message}`
-      : "Check your email for the login link.";
+      ? `Team sign-in failed: ${error.message}`
+      : "Signing in...";
   });
 
   signOutButton.addEventListener("click", async () => {
@@ -1895,13 +1901,15 @@ function updateSyncUi() {
     signOutButton.hidden = false;
     syncTitle.textContent = "Cloud Sync On";
     syncStatus.textContent = cloudNeedsReconnect
-      ? `Signed in as ${currentUser.email}, but cloud needs reconnect. Send a fresh login link below or sign out.`
+      ? `Signed in as ${currentUser.email}, but cloud needs reconnect. Enter the team password below or sign out.`
       : `Signed in as ${currentUser.email}. Changes sync with approved Beena team members.`;
   } else {
     loginForm.hidden = false;
     signOutButton.hidden = true;
     syncTitle.textContent = "Cloud Sync";
-    syncStatus.textContent = "Sign in with an approved team email.";
+    syncStatus.textContent = sharedLoginEmail
+      ? "Enter the shared team password to sync on this device."
+      : "Add sharedLoginEmail to config.js to enable shared team password sign-in.";
   }
 }
 
