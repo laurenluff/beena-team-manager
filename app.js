@@ -106,6 +106,7 @@ let listening = false;
 let currentUser = null;
 let cloudNicknameColumnAvailable = true;
 let cloudFixturesAvailable = true;
+let cloudInitializationPromise = null;
 
 const rosterNames = [
   "Alice Allet",
@@ -1870,7 +1871,7 @@ async function setupCloudSync() {
     currentUser = session?.user || null;
     updateSyncUi();
     if (currentUser) {
-      await initializeCloudData();
+      await queueInitializeCloudData();
     }
   });
 
@@ -1879,7 +1880,7 @@ async function setupCloudSync() {
   updateSyncUi();
 
   if (currentUser) {
-    await initializeCloudData();
+    await queueInitializeCloudData();
   }
 }
 
@@ -1925,6 +1926,23 @@ async function initializeCloudData() {
   }
 }
 
+async function queueInitializeCloudData() {
+  if (cloudInitializationPromise) return cloudInitializationPromise;
+
+  cloudInitializationPromise = (async () => {
+    try {
+      await initializeCloudData();
+    } catch (error) {
+      syncStatus.textContent = `Cloud sync failed: ${error.message || error}`;
+      render();
+    } finally {
+      cloudInitializationPromise = null;
+    }
+  })();
+
+  return cloudInitializationPromise;
+}
+
 async function loadCloudData() {
   if (!currentUser) return false;
 
@@ -1933,7 +1951,7 @@ async function loadCloudData() {
   let results;
 
   try {
-    results = await Promise.all([
+    results = await withTimeout(Promise.all([
       fetchCloudPlayers(),
       cloudClient
         .from("attendance")
@@ -1944,7 +1962,7 @@ async function loadCloudData() {
         .select("round,spot_id,player_id")
         .eq("team_id", teamId),
       fetchCloudFixtures()
-    ]);
+    ]), 15000, "Cloud load timed out. Please refresh and try again.");
   } catch (error) {
     syncStatus.textContent = `Cloud load failed: ${error.message || error}`;
     render();
@@ -2056,6 +2074,15 @@ function rowToFixture(row) {
 
 function isMissingFixturesTable(error) {
   return error.message?.toLowerCase().includes("fixtures") || error.details?.toLowerCase().includes("fixtures");
+}
+
+function withTimeout(promise, timeoutMs, timeoutMessage) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      globalThis.setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
+    })
+  ]);
 }
 
 function snapshotLocalState() {
