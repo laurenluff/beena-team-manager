@@ -107,6 +107,7 @@ let currentUser = null;
 let cloudNicknameColumnAvailable = true;
 let cloudFixturesAvailable = true;
 let cloudInitializationPromise = null;
+let cloudNeedsReconnect = false;
 
 const rosterNames = [
   "Alice Allet",
@@ -1864,11 +1865,13 @@ async function setupCloudSync() {
   signOutButton.addEventListener("click", async () => {
     await cloudClient.auth.signOut();
     currentUser = null;
+    cloudNeedsReconnect = false;
     updateSyncUi();
   });
 
   cloudClient.auth.onAuthStateChange(async (_event, session) => {
     currentUser = session?.user || null;
+    if (!currentUser) cloudNeedsReconnect = false;
     updateSyncUi();
     if (currentUser) {
       await queueInitializeCloudData();
@@ -1888,10 +1891,12 @@ function updateSyncUi() {
   if (!cloudClient) return;
 
   if (currentUser) {
-    loginForm.hidden = true;
+    loginForm.hidden = !cloudNeedsReconnect;
     signOutButton.hidden = false;
     syncTitle.textContent = "Cloud Sync On";
-    syncStatus.textContent = `Signed in as ${currentUser.email}. Changes sync with approved Beena team members.`;
+    syncStatus.textContent = cloudNeedsReconnect
+      ? `Signed in as ${currentUser.email}, but cloud needs reconnect. Send a fresh login link below or sign out.`
+      : `Signed in as ${currentUser.email}. Changes sync with approved Beena team members.`;
   } else {
     loginForm.hidden = false;
     signOutButton.hidden = true;
@@ -1933,6 +1938,8 @@ async function queueInitializeCloudData() {
     try {
       await initializeCloudData();
     } catch (error) {
+      cloudNeedsReconnect = true;
+      updateSyncUi();
       syncStatus.textContent = `Cloud sync failed: ${error.message || error}`;
       render();
     } finally {
@@ -1946,6 +1953,7 @@ async function queueInitializeCloudData() {
 async function loadCloudData() {
   if (!currentUser) return false;
 
+  cloudNeedsReconnect = false;
   syncStatus.textContent = "Loading cloud data...";
 
   let results;
@@ -1964,6 +1972,8 @@ async function loadCloudData() {
       fetchCloudFixtures()
     ]), 15000, "Cloud load timed out. Please refresh and try again.");
   } catch (error) {
+    cloudNeedsReconnect = true;
+    updateSyncUi();
     syncStatus.textContent = `Cloud load failed: ${error.message || error}`;
     render();
     return false;
@@ -1977,6 +1987,8 @@ async function loadCloudData() {
   ] = results;
 
   if (playersError || attendanceError) {
+    cloudNeedsReconnect = true;
+    updateSyncUi();
     syncStatus.textContent = `Cloud load failed: ${(playersError || attendanceError).message}`;
     render();
     return false;
@@ -2017,6 +2029,7 @@ async function loadCloudData() {
     render();
   }
 
+  cloudNeedsReconnect = false;
   syncStatus.textContent = lineupsError || fixturesError
     ? `Synced ${players.length} players. Run the latest SQL upgrades to sync lineups and fixtures.`
     : `Synced ${players.length} players.`;
