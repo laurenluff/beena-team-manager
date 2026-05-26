@@ -2619,20 +2619,113 @@ function importCsv(event) {
 
   const reader = new FileReader();
   reader.addEventListener("load", async () => {
-    const imported = parseCsv(String(reader.result))
-      .map(normalizeImportedPlayer)
-      .filter((player) => player.name);
+    const parsedRows = parseCsv(String(reader.result));
 
-    if (imported.length) {
-      players = imported;
-      savePlayers();
-      await upsertCloudPlayers(players);
-      render();
+    if (isAttendanceExport(parsedRows)) {
+      await importAttendanceExport(parsedRows);
+    } else {
+      const imported = parsedRows
+        .map(normalizeImportedPlayer)
+        .filter((player) => player.name);
+
+      if (imported.length) {
+        players = imported;
+        savePlayers();
+        await upsertCloudPlayers(players);
+        render();
+      }
     }
 
     event.target.value = "";
   });
   reader.readAsText(file);
+}
+
+function isAttendanceExport(rows) {
+  const firstRow = rows[0] || {};
+  return "round" in firstRow
+    && ("monday_training" in firstRow || "game_day_available" in firstRow || "game_day_not_available" in firstRow);
+}
+
+async function importAttendanceExport(rows) {
+  const existingPlayersByKey = new Map(players.map((player) => [normalizePlayerNameKey(player.name), player]));
+  const importedPlayersByKey = new Map();
+
+  rows.forEach((row) => {
+    const name = (row.player || row.name || "").trim();
+    if (!name) return;
+
+    const key = normalizePlayerNameKey(name);
+    const existingPlayer = existingPlayersByKey.get(key);
+    const importedPlayer = importedPlayersByKey.get(key) || {
+      id: existingPlayer?.id || makeId(),
+      name,
+      nickname: row.nickname?.trim() || existingPlayer?.nickname || "",
+      number: existingPlayer?.number || "",
+      position: existingPlayer?.position || "Utility",
+      status: existingPlayer?.status || "Available",
+      training: false,
+      match: false,
+      notes: row.notes?.trim() || existingPlayer?.notes || ""
+    };
+
+    importedPlayer.nickname ||= row.nickname?.trim() || "";
+    if ((row.notes?.trim().length || 0) > (importedPlayer.notes?.length || 0)) {
+      importedPlayer.notes = row.notes.trim();
+    }
+
+    importedPlayersByKey.set(key, importedPlayer);
+  });
+
+  if (!importedPlayersByKey.size) return;
+
+  players = [...importedPlayersByKey.values()].sort((a, b) => a.name.localeCompare(b.name));
+  attendance = {};
+  lineups = {};
+  normalizeAttendance();
+  normalizeLineups();
+
+  const playerIdsByKey = new Map(players.map((player) => [normalizePlayerNameKey(player.name), player.id]));
+
+  rows.forEach((row) => {
+    const key = normalizePlayerNameKey((row.player || row.name || "").trim());
+    const playerId = playerIdsByKey.get(key);
+    const round = Number.parseInt(row.round, 10);
+    if (!playerId || !Number.isInteger(round) || round < 1 || round > roundCount) return;
+
+    markImportedAttendance(playerId, round, "monday", row.monday_training);
+    markImportedAttendance(playerId, round, "thursday", row.thursday_training);
+    markImportedAttendance(playerId, round, "game", row.game_day_available);
+    markImportedAttendance(playerId, round, gameUnavailableSession, row.game_day_not_available);
+  });
+
+  savePlayers();
+  saveAttendance();
+  saveLineups();
+  selectLatestRoundWithData();
+  renderRoundButtons();
+  render();
+
+  if (currentUser) {
+    await syncLocalToCloud();
+    syncStatus.textContent = `Imported ${players.length} players and attendance from CSV. Lineups were not included in the export.`;
+  } else {
+    syncStatus.textContent = `Imported ${players.length} players and attendance locally. Sign in to sync this restored data.`;
+  }
+}
+
+function markImportedAttendance(playerId, round, session, value) {
+  if (!isTruthyImportValue(value)) return;
+  const roundAttendance = attendance[String(round)];
+  if (!roundAttendance?.[session]) return;
+  if (!roundAttendance[session].includes(playerId)) {
+    roundAttendance[session].push(playerId);
+  }
+}
+
+function isTruthyImportValue(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return ["yes", "y", "true", "1"].includes(normalized);
 }
 
 function normalizeImportedPlayer(row) {
