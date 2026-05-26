@@ -2949,7 +2949,12 @@ function importCsv(event) {
       if (imported.length) {
         players = imported;
         savePlayers();
-        await upsertCloudPlayers(players);
+        if (currentUser && !cloudNeedsReconnect) {
+          await upsertCloudPlayers(players);
+          syncStatus.textContent = `Imported ${players.length} players and synced them to cloud.`;
+        } else {
+          syncStatus.textContent = `Imported ${players.length} players locally. Reconnect cloud sync before refreshing to upload them.`;
+        }
         render();
       }
     }
@@ -3024,11 +3029,11 @@ async function importAttendanceExport(rows) {
   renderRoundButtons();
   render();
 
-  if (currentUser) {
+  if (currentUser && !cloudNeedsReconnect) {
     await syncLocalToCloud();
     syncStatus.textContent = `Imported ${players.length} players and attendance from CSV. Lineups were not included in the export.`;
   } else {
-    syncStatus.textContent = `Imported ${players.length} players and attendance locally. Sign in to sync this restored data.`;
+    syncStatus.textContent = `Imported ${players.length} players and attendance locally. Reconnect cloud sync before refreshing to upload this restored data.`;
   }
 }
 
