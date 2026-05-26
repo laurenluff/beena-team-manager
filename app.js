@@ -3,7 +3,7 @@ const attendanceKey = "footy-team-round-attendance-v1";
 const lineupsKey = "footy-team-lineups-v1";
 const fixturesKey = "footy-team-fixtures-v1";
 const lineupNameModeKey = "footy-team-lineup-name-mode-v1";
-const fixturesSeedKey = "footy-team-fixtures-2026-seeded-v1";
+const fixturesSeedKey = "footy-team-fixtures-2026-seeded-v2";
 const rosterKey = "footy-team-roster-2026-v1";
 const roundCount = 16;
 const sessions = ["monday", "thursday", "game"];
@@ -188,6 +188,116 @@ const defaultFixtures = [
     notes: "Upcoming"
   },
   {
+    id: "open-mens-round-8-2026",
+    round: "8",
+    date: "2026-05-30",
+    time: "08:55",
+    team: "Open Mens",
+    opponent: "Mordialloc Open Grade",
+    venue: "Ben Kavanagh Reserve / Ben Kavanagh Reserve 1",
+    notes: "Upcoming"
+  },
+  {
+    id: "open-mens-round-9-2026",
+    round: "9",
+    date: "2026-06-06",
+    time: "",
+    team: "Open Mens",
+    opponent: "Bye",
+    venue: "",
+    notes: "Bye"
+  },
+  {
+    id: "open-mens-round-10-2026",
+    round: "10",
+    date: "2026-06-13",
+    time: "10:00",
+    team: "Open Mens",
+    opponent: "South Yarra Open Grade",
+    venue: "Leigh Park / Leigh Park 1",
+    notes: "Upcoming"
+  },
+  {
+    id: "open-mens-round-11-2026",
+    round: "11",
+    date: "2026-06-20",
+    time: "08:55",
+    team: "Open Mens",
+    opponent: "Pakenham Open Grade",
+    venue: "Murrumbeena Park / Murrumbeena Park 1",
+    notes: "Upcoming"
+  },
+  {
+    id: "open-mens-round-12-2026",
+    round: "12",
+    date: "2026-06-27",
+    time: "12:30",
+    team: "Open Mens",
+    opponent: "Skye Open Grade",
+    venue: "Murrumbeena Park / Murrumbeena Park 1",
+    notes: "Upcoming"
+  },
+  {
+    id: "open-mens-round-13-2026",
+    round: "13",
+    date: "2026-07-11",
+    time: "08:55",
+    team: "Open Mens",
+    opponent: "Endeavour Hills Open Grade",
+    venue: "Barry Simon Reserve / Barry Simon Reserve 1",
+    notes: "Upcoming"
+  },
+  {
+    id: "open-mens-round-14-2026",
+    round: "14",
+    date: "2026-07-18",
+    time: "08:55",
+    team: "Open Mens",
+    opponent: "Springvale Districts Open Grade",
+    venue: "Murrumbeena Park / Murrumbeena Park 1",
+    notes: "Upcoming"
+  },
+  {
+    id: "open-mens-round-15-2026",
+    round: "15",
+    date: "2026-07-25",
+    time: "10:00",
+    team: "Open Mens",
+    opponent: "Lyndhurst Open Grade",
+    venue: "Marriott Waters Reserve / Marriott Waters Reserve 2",
+    notes: "Upcoming"
+  },
+  {
+    id: "open-mens-round-16-2026",
+    round: "16",
+    date: "2026-08-01",
+    time: "10:00",
+    team: "Open Mens",
+    opponent: "Black Rock Open Grade",
+    venue: "Donald McDonald Reserve / Donald McDonald Reserve 1",
+    notes: "Upcoming"
+  },
+  {
+    id: "open-mens-round-17-2026",
+    round: "17",
+    date: "2026-08-08",
+    time: "",
+    team: "Open Mens",
+    opponent: "Bye",
+    venue: "",
+    notes: "Bye"
+  },
+  {
+    id: "open-mens-round-18-2026",
+    round: "18",
+    date: "2026-08-15",
+    time: "08:55",
+    team: "Open Mens",
+    opponent: "Mordialloc Open Grade",
+    venue: "Murrumbeena Park / Murrumbeena Park 1",
+    notes: "Upcoming"
+  },
+  {
     id: "u19s-round-1-2026",
     round: "1",
     date: "2026-04-11",
@@ -225,6 +335,116 @@ const defaultFixtures = [
     team: "U19's",
     opponent: "Bentleigh U19s",
     venue: "Bentleigh Recreation Reserve / Bentleigh Recreation Reserve 1",
+    notes: "Upcoming"
+  },
+  {
+    id: "u19s-round-8-2026",
+    round: "8",
+    date: "2026-05-30",
+    time: "10:00",
+    team: "U19's",
+    opponent: "Highett U19s",
+    venue: "Highett Reserve / Highett Reserve 1",
+    notes: "Upcoming"
+  },
+  {
+    id: "u19s-round-9-2026",
+    round: "9",
+    date: "2026-06-13",
+    time: "10:00",
+    team: "U19's",
+    opponent: "Cheltenham U19s",
+    venue: "Jack Barker Oval / Jack Barker Oval 1",
+    notes: "Upcoming"
+  },
+  {
+    id: "u19s-round-10-2026",
+    round: "10",
+    date: "2026-06-20",
+    time: "10:40",
+    team: "U19's",
+    opponent: "Berwick Springs U19s",
+    venue: "Murrumbeena Park / Murrumbeena Park 1",
+    notes: "Upcoming"
+  },
+  {
+    id: "u19s-round-11-2026",
+    round: "11",
+    date: "2026-06-27",
+    time: "10:40",
+    team: "U19's",
+    opponent: "Officer U19s",
+    venue: "Murrumbeena Park / Murrumbeena Park 1",
+    notes: "Upcoming"
+  },
+  {
+    id: "u19s-round-12-2026",
+    round: "12",
+    date: "2026-07-11",
+    time: "10:40",
+    team: "U19's",
+    opponent: "Narre Warren 1 U19s",
+    venue: "Kalora Park / Kalora Park 1",
+    notes: "Upcoming"
+  },
+  {
+    id: "u19s-round-13-2026",
+    round: "13",
+    date: "2026-07-18",
+    time: "10:40",
+    team: "U19's",
+    opponent: "Bentleigh U19s",
+    venue: "Murrumbeena Park / Murrumbeena Park 1",
+    notes: "Upcoming"
+  },
+  {
+    id: "u19s-round-14-2026",
+    round: "14",
+    date: "2026-07-25",
+    time: "10:40",
+    team: "U19's",
+    opponent: "Highett U19s",
+    venue: "Murrumbeena Park / Murrumbeena Park 1",
+    notes: "Upcoming"
+  },
+  {
+    id: "u19s-round-15-2026",
+    round: "15",
+    date: "2026-08-01",
+    time: "10:00",
+    team: "U19's",
+    opponent: "Heatherton U19s",
+    venue: "Heatherton Recreational Reserve / Heatherton Recreational Reserve 1",
+    notes: "Upcoming"
+  },
+  {
+    id: "u19s-round-16-2026",
+    round: "16",
+    date: "2026-08-08",
+    time: "10:00",
+    team: "U19's",
+    opponent: "Berwick Springs U19s",
+    venue: "Mick Morland Reserve / Mick Morland Reserve 1",
+    notes: "Upcoming"
+  },
+  {
+    id: "u19s-round-17-2026",
+    round: "17",
+    date: "2026-08-15",
+    time: "10:00",
+    team: "U19's",
+    opponent: "Officer U19s",
+    venue: "Rob Porter Recreation Reserve / Rob Porter Recreation Reserve Eastern Oval",
+    notes: "Upcoming"
+  },
+  {
+    id: "u19s-round-18-2026",
+    round: "18",
+    date: "2026-08-22",
+    time: "10:00",
+    team: "U19's",
+    opponent: "Cheltenham U19s",
+    venue: "Murrumbeena Park / Murrumbeena Park 1",
     notes: "Upcoming"
   },
   {
@@ -625,6 +845,96 @@ const defaultFixtures = [
     team: "Senior Womens",
     opponent: "Bentleigh Womens",
     venue: "Bentleigh Recreation Reserve / Bentleigh Recreation Reserve 1",
+    notes: "Upcoming"
+  },
+  {
+    id: "senior-womens-round-8-2026",
+    round: "8",
+    date: "2026-05-30",
+    time: "08:55",
+    team: "Senior Womens",
+    opponent: "Endeavour Hills Womens 1",
+    venue: "Barry Simon Reserve / Barry Simon Reserve 1",
+    notes: "Upcoming"
+  },
+  {
+    id: "senior-womens-round-9-2026",
+    round: "9",
+    date: "2026-06-12",
+    time: "19:00",
+    team: "Senior Womens",
+    opponent: "Bentleigh Womens",
+    venue: "Murrumbeena Park / Murrumbeena Park 1",
+    notes: "Upcoming"
+  },
+  {
+    id: "senior-womens-round-10-2026",
+    round: "10",
+    date: "2026-06-20",
+    time: "10:00",
+    team: "Senior Womens",
+    opponent: "Narre South Saints Womens",
+    venue: "Strathaird Reserve / Strathaird Reserve 1",
+    notes: "Upcoming"
+  },
+  {
+    id: "senior-womens-round-11-2026",
+    round: "11",
+    date: "2026-06-27",
+    time: "08:55",
+    team: "Senior Womens",
+    opponent: "Black Rock Womens",
+    venue: "Murrumbeena Park / Murrumbeena Park 1",
+    notes: "Upcoming"
+  },
+  {
+    id: "senior-womens-round-12-2026",
+    round: "12",
+    date: "2026-07-04",
+    time: "10:00",
+    team: "Senior Womens",
+    opponent: "Casey Thunder Womens 1",
+    venue: "TBA / TBA",
+    notes: "WOMENS ROUND"
+  },
+  {
+    id: "senior-womens-round-13-2026",
+    round: "13",
+    date: "2026-07-11",
+    time: "11:40",
+    team: "Senior Womens",
+    opponent: "Endeavour Hills Womens 1",
+    venue: "Charles Green Reserve / Charles Green Reserve 1",
+    notes: "Upcoming"
+  },
+  {
+    id: "senior-womens-round-14-2026",
+    round: "14",
+    date: "2026-07-18",
+    time: "10:00",
+    team: "Senior Womens",
+    opponent: "Black Rock Womens",
+    venue: "Donald McDonald Reserve / Donald McDonald Reserve 1",
+    notes: "Upcoming"
+  },
+  {
+    id: "senior-womens-round-15-2026",
+    round: "15",
+    date: "2026-07-25",
+    time: "08:55",
+    team: "Senior Womens",
+    opponent: "Bentleigh Womens",
+    venue: "Murrumbeena Park / Murrumbeena Park 1",
+    notes: "Upcoming"
+  },
+  {
+    id: "senior-womens-round-16-2026",
+    round: "16",
+    date: "2026-08-01",
+    time: "10:00",
+    team: "Senior Womens",
+    opponent: "Casey Thunder Womens 1",
+    venue: "Murrumbeena Park / Murrumbeena Park 1",
     notes: "Upcoming"
   }
 ];

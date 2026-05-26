@@ -771,7 +771,7 @@ button:focus-visible {
   font-weight: 850;
   text-align: left;
   cursor: grab;
-  touch-action: none;
+  touch-action: pan-y;
   user-select: none;
 }
 
@@ -1331,11 +1331,15 @@ th {
   .lineup-pool {
     width: min(100%, 593px);
     margin: 0 auto;
+    max-height: min(58vh, 420px);
+    overflow: hidden;
   }
 
   .lineup-player-list {
     grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-    max-height: 260px;
+    max-height: calc(min(58vh, 420px) - 118px);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
 
   .round-grid {
@@ -1416,6 +1420,7 @@ th {
 
   .lineup-player-list {
     grid-template-columns: 1fr;
+    max-height: 300px;
   }
 
   .crm-row {
