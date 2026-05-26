@@ -998,17 +998,17 @@ function createFixtureCard(fixture) {
   card.classList.toggle("is-home", home);
   label.className = "fixture-team-label";
   label.textContent = fixture.team;
-  title.textContent = home ? "Home" : fixture.opponent;
+  title.textContent = formatFixtureOpponent(fixture.opponent);
   meta.textContent = [
     fixture.round ? `Round ${fixture.round}` : "",
     fixture.time ? formatFixtureTime(fixture.time) : "TBC",
-    fixture.venue,
+    formatFixtureVenue(fixture.venue),
     fixture.notes
   ].filter(Boolean).join(" · ");
   main.append(label, title, meta);
 
   detail.className = "fixture-location";
-  detail.textContent = home ? homeVenue : fixture.opponent;
+  detail.textContent = formatFixtureVenue(fixture.venue);
 
   actions.className = "fixture-card-actions";
   editButton.type = "button";
@@ -1039,6 +1039,17 @@ function groupFixturesByDate(fixtureList) {
 
 function isHomeFixture(fixture) {
   return normalizeSpeechText(fixture.venue).includes(normalizeSpeechText(homeVenue));
+}
+
+function formatFixtureOpponent(opponent) {
+  return opponent
+    .replace(/\b(Open Grade|U19s|Reserves|Seniors|Womens(?:\s+1)?)\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function formatFixtureVenue(venue) {
+  return venue.split("/")[0].trim();
 }
 
 function isUpcomingFixture(fixture) {
@@ -1889,9 +1900,26 @@ function updateSyncUi() {
 }
 
 async function initializeCloudData() {
+  const localSnapshot = snapshotLocalState();
   const hasCloudRoster = await loadCloudData();
 
   if (!hasCloudRoster) {
+    await syncLocalToCloud();
+    await loadCloudData();
+    return;
+  }
+
+  if (shouldMergeLocalSnapshot(localSnapshot)) {
+    mergeLocalSnapshotIntoState(localSnapshot);
+    normalizeAttendance();
+    normalizeLineups();
+    savePlayers();
+    saveAttendance();
+    saveLineups();
+    saveFixtures();
+    renderRoundButtons();
+    render();
+    syncStatus.textContent = "Merging this device with cloud data...";
     await syncLocalToCloud();
     await loadCloudData();
   }
@@ -2028,6 +2056,122 @@ function rowToFixture(row) {
 
 function isMissingFixturesTable(error) {
   return error.message?.toLowerCase().includes("fixtures") || error.details?.toLowerCase().includes("fixtures");
+}
+
+function snapshotLocalState() {
+  return {
+    players: players.map((player) => ({ ...player })),
+    attendance: JSON.parse(JSON.stringify(attendance)),
+    lineups: JSON.parse(JSON.stringify(lineups)),
+    fixtures: JSON.parse(JSON.stringify(fixtures))
+  };
+}
+
+function shouldMergeLocalSnapshot(snapshot) {
+  if (snapshotHasAttendanceOrLineups(snapshot)) return true;
+
+  const currentPlayerKeys = new Set(players.map((player) => normalizePlayerNameKey(player.name)));
+  return snapshot.players.some((player) =>
+    !currentPlayerKeys.has(normalizePlayerNameKey(player.name)) ||
+    Boolean(player.nickname || player.number || player.notes) ||
+    (player.position && player.position !== "Utility") ||
+    (player.status && player.status !== "Available")
+  );
+}
+
+function snapshotHasAttendanceOrLineups(snapshot) {
+  for (let round = 1; round <= roundCount; round += 1) {
+    const roundAttendance = snapshot.attendance?.[String(round)] || {};
+    const roundLineup = snapshot.lineups?.[String(round)] || {};
+
+    if (allAttendanceSessions.some((session) => roundAttendance[session]?.length)) return true;
+    if (Object.values(roundLineup).some(Boolean)) return true;
+  }
+
+  return false;
+}
+
+function mergeLocalSnapshotIntoState(snapshot) {
+  const cloudPlayersByKey = new Map(players.map((player) => [normalizePlayerNameKey(player.name), { ...player }]));
+  const localIdMap = new Map();
+
+  snapshot.players.forEach((localPlayer) => {
+    const key = normalizePlayerNameKey(localPlayer.name);
+    if (!key) return;
+
+    if (!cloudPlayersByKey.has(key)) {
+      cloudPlayersByKey.set(key, { ...localPlayer });
+      localIdMap.set(localPlayer.id, localPlayer.id);
+      return;
+    }
+
+    const mergedPlayer = cloudPlayersByKey.get(key);
+    localIdMap.set(localPlayer.id, mergedPlayer.id);
+    mergedPlayer.nickname = pickPreferredText(mergedPlayer.nickname, localPlayer.nickname);
+    mergedPlayer.number = pickPreferredText(mergedPlayer.number, localPlayer.number);
+    mergedPlayer.notes = pickLongerText(mergedPlayer.notes, localPlayer.notes);
+    mergedPlayer.position = pickPreferredChoice(mergedPlayer.position, localPlayer.position, "Utility");
+    mergedPlayer.status = pickPreferredChoice(mergedPlayer.status, localPlayer.status, "Available");
+  });
+
+  players = [...cloudPlayersByKey.values()];
+
+  for (let round = 1; round <= roundCount; round += 1) {
+    const roundKey = String(round);
+    const localRoundAttendance = snapshot.attendance?.[roundKey] || {};
+    attendance[roundKey] ||= {};
+
+    allAttendanceSessions.forEach((session) => {
+      const currentIds = new Set(attendance[roundKey][session] || []);
+      (localRoundAttendance[session] || []).forEach((playerId) => {
+        currentIds.add(localIdMap.get(playerId) || playerId);
+      });
+      attendance[roundKey][session] = [...currentIds];
+    });
+
+    const localRoundLineup = snapshot.lineups?.[roundKey] || {};
+    lineups[roundKey] ||= {};
+    Object.entries(localRoundLineup).forEach(([spotId, playerId]) => {
+      if (!lineups[roundKey][spotId]) {
+        lineups[roundKey][spotId] = localIdMap.get(playerId) || playerId;
+      }
+    });
+  }
+
+  const cloudFixturesById = new Map(fixtures.map((fixture) => [fixture.id, { ...fixture }]));
+  snapshot.fixtures.forEach((localFixture) => {
+    if (!cloudFixturesById.has(localFixture.id)) {
+      cloudFixturesById.set(localFixture.id, { ...localFixture });
+      return;
+    }
+
+    const mergedFixture = cloudFixturesById.get(localFixture.id);
+    mergedFixture.round = pickPreferredText(mergedFixture.round, localFixture.round);
+    mergedFixture.date = pickPreferredText(mergedFixture.date, localFixture.date);
+    mergedFixture.time = pickPreferredText(mergedFixture.time, localFixture.time);
+    mergedFixture.team = pickPreferredText(mergedFixture.team, localFixture.team);
+    mergedFixture.opponent = pickPreferredText(mergedFixture.opponent, localFixture.opponent);
+    mergedFixture.venue = pickPreferredText(mergedFixture.venue, localFixture.venue);
+    mergedFixture.notes = pickLongerText(mergedFixture.notes, localFixture.notes);
+  });
+  fixtures = [...cloudFixturesById.values()];
+}
+
+function pickPreferredText(primaryValue, fallbackValue) {
+  return primaryValue || fallbackValue || "";
+}
+
+function pickLongerText(primaryValue, fallbackValue) {
+  return (fallbackValue?.length || 0) > (primaryValue?.length || 0)
+    ? (fallbackValue || "")
+    : (primaryValue || "");
+}
+
+function pickPreferredChoice(primaryValue, fallbackValue, defaultValue) {
+  if ((!primaryValue || primaryValue === defaultValue) && fallbackValue && fallbackValue !== defaultValue) {
+    return fallbackValue;
+  }
+  return primaryValue || fallbackValue || defaultValue;
 }
 
 async function syncLocalToCloud() {
