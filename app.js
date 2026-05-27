@@ -2706,6 +2706,7 @@ async function upsertCloudPlayers(playerList) {
       return;
     }
     syncStatus.textContent = `Player sync failed: ${error.message}`;
+    throw error;
   }
 }
 
@@ -2727,6 +2728,7 @@ async function upsertCloudAttendance(rows) {
   const { error } = await cloudClient.from("attendance").upsert(payload);
   if (error) {
     syncStatus.textContent = `Attendance sync failed: ${error.message}`;
+    throw error;
   }
 }
 
@@ -2743,6 +2745,7 @@ async function deleteCloudAttendance(playerId, round, session) {
 
   if (error) {
     syncStatus.textContent = `Attendance sync failed: ${error.message}`;
+    throw error;
   }
 }
 
@@ -2760,6 +2763,7 @@ async function upsertCloudLineups(rows) {
   const { error } = await cloudClient.from("lineups").upsert(payload);
   if (error) {
     syncStatus.textContent = `Lineup sync failed: ${error.message}`;
+    throw error;
   }
 }
 
@@ -2775,6 +2779,7 @@ async function deleteCloudLineupSpot(round, spotId) {
 
   if (error) {
     syncStatus.textContent = `Lineup sync failed: ${error.message}`;
+    throw error;
   }
 }
 
@@ -2789,6 +2794,7 @@ async function deleteCloudLineupRound(round) {
 
   if (error) {
     syncStatus.textContent = `Lineup sync failed: ${error.message}`;
+    throw error;
   }
 }
 
@@ -2816,6 +2822,7 @@ async function upsertCloudFixtures(fixtureList) {
       return;
     }
     syncStatus.textContent = `Fixture sync failed: ${error.message}`;
+    throw error;
   }
 }
 
@@ -2830,6 +2837,7 @@ async function deleteCloudPlayer(playerId) {
 
   if (error) {
     syncStatus.textContent = `Player delete failed: ${error.message}`;
+    throw error;
   }
 }
 
@@ -2970,8 +2978,15 @@ function importCsv(event) {
         players = imported;
         savePlayers();
         if ((currentUser || publicTeamAccess) && !cloudNeedsReconnect) {
-          await upsertCloudPlayers(players);
-          syncStatus.textContent = `Imported ${players.length} players and synced them to cloud.`;
+          try {
+            await upsertCloudPlayers(players);
+            if (publicTeamAccess) {
+              await loadCloudData();
+            }
+            syncStatus.textContent = `Imported ${players.length} players and synced them to cloud.`;
+          } catch {
+            syncStatus.textContent ||= `Imported ${players.length} players locally, but cloud sync failed.`;
+          }
         } else {
           syncStatus.textContent = `Imported ${players.length} players locally. Reconnect cloud sync before refreshing to upload them.`;
         }
@@ -3050,8 +3065,15 @@ async function importAttendanceExport(rows) {
   render();
 
   if ((currentUser || publicTeamAccess) && !cloudNeedsReconnect) {
-    await syncLocalToCloud();
-    syncStatus.textContent = `Imported ${players.length} players and attendance from CSV. Lineups were not included in the export.`;
+    try {
+      await syncLocalToCloud();
+      if (publicTeamAccess) {
+        await loadCloudData();
+      }
+      syncStatus.textContent = `Imported ${players.length} players and attendance from CSV. Lineups were not included in the export.`;
+    } catch {
+      syncStatus.textContent ||= `Imported ${players.length} players and attendance locally, but cloud sync failed.`;
+    }
   } else {
     syncStatus.textContent = `Imported ${players.length} players and attendance locally. Reconnect cloud sync before refreshing to upload this restored data.`;
   }
