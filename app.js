@@ -97,6 +97,7 @@ const SpeechRecognition = globalThis.SpeechRecognition || globalThis.webkitSpeec
 const supabaseSettings = globalThis.FOOTY_SUPABASE || {};
 const teamId = supabaseSettings.teamId || "beena";
 const sharedLoginEmail = (supabaseSettings.sharedLoginEmail || "").trim().toLowerCase();
+const publicTeamAccess = Boolean(supabaseSettings.publicTeamAccess);
 const hasCloudSettings = Boolean(supabaseSettings.url && supabaseSettings.anonKey && teamId);
 const cloudClient = hasCloudSettings && globalThis.supabase
   ? globalThis.supabase.createClient(supabaseSettings.url, supabaseSettings.anonKey)
@@ -2156,6 +2157,15 @@ async function setupCloudSync() {
     return;
   }
 
+  if (publicTeamAccess) {
+    loginForm.hidden = true;
+    signOutButton.hidden = true;
+    syncTitle.textContent = "Cloud Sync On";
+    syncStatus.textContent = "Shared cloud sync is on. Anyone with the live Beena link can edit this team data.";
+    await queueInitializeCloudData();
+    return;
+  }
+
   loginForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     const password = passwordInput.value.trim();
@@ -2205,6 +2215,16 @@ async function setupCloudSync() {
 
 function updateSyncUi() {
   if (!cloudClient) return;
+
+  if (publicTeamAccess) {
+    loginForm.hidden = true;
+    signOutButton.hidden = true;
+    syncTitle.textContent = "Cloud Sync On";
+    syncStatus.textContent = cloudNeedsReconnect
+      ? "Shared cloud sync needs the public Supabase policies updated."
+      : "Shared cloud sync is on. Anyone with the live Beena link can edit this team data.";
+    return;
+  }
 
   if (currentUser) {
     loginForm.hidden = !cloudNeedsReconnect;
@@ -2269,7 +2289,7 @@ async function queueInitializeCloudData() {
 }
 
 async function loadCloudData() {
-  if (!currentUser) return false;
+  if (!currentUser && !publicTeamAccess) return false;
 
   cloudNeedsReconnect = false;
   syncStatus.textContent = "Loading cloud data...";
@@ -2533,7 +2553,7 @@ function pickPreferredChoice(primaryValue, fallbackValue, defaultValue) {
 }
 
 async function syncLocalToCloud() {
-  if (!currentUser) return;
+  if (!currentUser && !publicTeamAccess) return;
 
   ensureCloudSafePlayerIds();
   await mergeExistingCloudPlayers();
@@ -2663,12 +2683,12 @@ function ensureCloudSafePlayerIds() {
 }
 
 async function upsertCloudPlayers(playerList) {
-  if (!currentUser || !playerList.length) return;
+  if ((!currentUser && !publicTeamAccess) || !playerList.length) return;
 
   const rows = playerList.map((player) => ({
     id: player.id,
     team_id: teamId,
-    user_id: currentUser.id,
+    user_id: currentUser?.id || null,
     name: player.name,
     ...(cloudNicknameColumnAvailable ? { nickname: player.nickname || "" } : {}),
     number: player.number || "",
@@ -2694,11 +2714,11 @@ function isMissingNicknameColumn(error) {
 }
 
 async function upsertCloudAttendance(rows) {
-  if (!currentUser || !rows.length) return;
+  if ((!currentUser && !publicTeamAccess) || !rows.length) return;
 
   const payload = rows.map((row) => ({
     team_id: teamId,
-    user_id: currentUser.id,
+    user_id: currentUser?.id || null,
     player_id: row.playerId,
     round: row.round,
     session: row.session
@@ -2711,7 +2731,7 @@ async function upsertCloudAttendance(rows) {
 }
 
 async function deleteCloudAttendance(playerId, round, session) {
-  if (!currentUser) return;
+  if (!currentUser && !publicTeamAccess) return;
 
   const { error } = await cloudClient
     .from("attendance")
@@ -2727,11 +2747,11 @@ async function deleteCloudAttendance(playerId, round, session) {
 }
 
 async function upsertCloudLineups(rows) {
-  if (!currentUser || !rows.length) return;
+  if ((!currentUser && !publicTeamAccess) || !rows.length) return;
 
   const payload = rows.map((row) => ({
     team_id: teamId,
-    user_id: currentUser.id,
+    user_id: currentUser?.id || null,
     round: row.round,
     spot_id: row.spotId,
     player_id: row.playerId
@@ -2744,7 +2764,7 @@ async function upsertCloudLineups(rows) {
 }
 
 async function deleteCloudLineupSpot(round, spotId) {
-  if (!currentUser) return;
+  if (!currentUser && !publicTeamAccess) return;
 
   const { error } = await cloudClient
     .from("lineups")
@@ -2759,7 +2779,7 @@ async function deleteCloudLineupSpot(round, spotId) {
 }
 
 async function deleteCloudLineupRound(round) {
-  if (!currentUser) return;
+  if (!currentUser && !publicTeamAccess) return;
 
   const { error } = await cloudClient
     .from("lineups")
@@ -2773,12 +2793,12 @@ async function deleteCloudLineupRound(round) {
 }
 
 async function upsertCloudFixtures(fixtureList) {
-  if (!currentUser || !cloudFixturesAvailable || !fixtureList.length) return;
+  if ((!currentUser && !publicTeamAccess) || !cloudFixturesAvailable || !fixtureList.length) return;
 
   const payload = fixtureList.map((fixture) => ({
     id: fixture.id,
     team_id: teamId,
-    user_id: currentUser.id,
+    user_id: currentUser?.id || null,
     round: fixture.round || "",
     date: fixture.date,
     time: fixture.time || null,
@@ -2800,7 +2820,7 @@ async function upsertCloudFixtures(fixtureList) {
 }
 
 async function deleteCloudPlayer(playerId) {
-  if (!currentUser) return;
+  if (!currentUser && !publicTeamAccess) return;
 
   const { error } = await cloudClient
     .from("players")
@@ -2949,7 +2969,7 @@ function importCsv(event) {
       if (imported.length) {
         players = imported;
         savePlayers();
-        if (currentUser && !cloudNeedsReconnect) {
+        if ((currentUser || publicTeamAccess) && !cloudNeedsReconnect) {
           await upsertCloudPlayers(players);
           syncStatus.textContent = `Imported ${players.length} players and synced them to cloud.`;
         } else {
@@ -3029,7 +3049,7 @@ async function importAttendanceExport(rows) {
   renderRoundButtons();
   render();
 
-  if (currentUser && !cloudNeedsReconnect) {
+  if ((currentUser || publicTeamAccess) && !cloudNeedsReconnect) {
     await syncLocalToCloud();
     syncStatus.textContent = `Imported ${players.length} players and attendance from CSV. Lineups were not included in the export.`;
   } else {
