@@ -98,11 +98,16 @@ const showPastFixturesInput = document.querySelector("#showPastFixtures");
 const SpeechRecognition = globalThis.SpeechRecognition || globalThis.webkitSpeechRecognition;
 const backendSettings = globalThis.FOOTY_BACKEND || {};
 const teamId = backendSettings.teamId || "beena";
+const backendMode = String(backendSettings.mode || "").trim();
+const databaseUrl = String(backendSettings.databaseUrl || "").trim().replace(/\/+$/, "");
 const appsScriptUrl = String(backendSettings.appsScriptUrl || "").trim();
-const publicTeamAccess = Boolean(appsScriptUrl && teamId);
+const publicTeamAccess = Boolean(teamId && (databaseUrl || appsScriptUrl));
 const hasCloudSettings = publicTeamAccess;
 const cloudClient = hasCloudSettings
-  ? { endpoint: appsScriptUrl, mode: backendSettings.mode || "google-sheets" }
+  ? {
+      mode: backendMode || (databaseUrl ? "firebase-rtdb" : "google-sheets"),
+      endpoint: databaseUrl || appsScriptUrl
+    }
   : null;
 
 let recognition = null;
@@ -2161,7 +2166,7 @@ async function setupCloudSync() {
     signOutButton.hidden = true;
     refreshSyncButton.hidden = false;
     syncTitle.textContent = "Local Mode";
-    syncStatus.textContent = "Add your Google Apps Script URL to config.js to sync between phone and laptop.";
+    syncStatus.textContent = "Add a shared sync backend to config.js to sync between phone and laptop.";
     updateLastSynced(0);
     return;
   }
@@ -2169,7 +2174,7 @@ async function setupCloudSync() {
   loginForm.hidden = true;
   signOutButton.hidden = true;
   syncTitle.textContent = "Shared Sync On";
-  syncStatus.textContent = "Shared Google Sheets sync is on. Changes made on one device will refresh onto the others.";
+  syncStatus.textContent = "Shared sync is on. Changes made on one device will refresh onto the others.";
   refreshSyncButton.hidden = false;
   refreshSyncButton.addEventListener("click", () => {
     refreshCloudSnapshot("Refreshing shared data...");
@@ -2186,8 +2191,8 @@ function updateSyncUi() {
   signOutButton.hidden = true;
   syncTitle.textContent = "Shared Sync On";
   syncStatus.textContent = cloudNeedsReconnect
-    ? "Shared sync needs attention. Check your Google Apps Script deployment URL and refresh."
-    : "Shared Google Sheets sync is on. Changes made on one device will refresh onto the others.";
+    ? "Shared sync needs attention. Check the backend connection and refresh."
+    : "Shared sync is on. Changes made on one device will refresh onto the others.";
 }
 
 function startCloudAutoRefresh() {
@@ -2308,7 +2313,7 @@ async function loadCloudData() {
     lastCloudSyncAt = Date.now();
     updateLastSynced();
     syncStatus.textContent = payload?.updatedAt
-      ? `Synced ${players.length} players from Google Sheets.`
+      ? `Synced ${players.length} players from shared cloud.`
       : `Shared sync is ready. Your next change will create the first shared snapshot.`;
     return Boolean(remoteState?.players?.length);
   })();
@@ -2383,6 +2388,35 @@ function withTimeout(promise, timeoutMs, timeoutMessage) {
 }
 
 async function fetchBackendSnapshot() {
+  if (cloudClient.mode === "firebase-rtdb") {
+    const url = `${cloudClient.endpoint}/teams/${encodeURIComponent(teamId)}.json?t=${Date.now()}`;
+    const response = await fetch(url, {
+      method: "GET",
+      cache: "no-store"
+    });
+
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    if (!payload) {
+      return {
+        ok: true,
+        teamId,
+        updatedAt: "",
+        state: null
+      };
+    }
+
+    return {
+      ok: true,
+      teamId,
+      updatedAt: payload.updatedAt || "",
+      state: payload.state || null
+    };
+  }
+
   const url = new URL(cloudClient.endpoint);
   url.searchParams.set("teamId", teamId);
   url.searchParams.set("t", Date.now());
@@ -2400,6 +2434,31 @@ async function fetchBackendSnapshot() {
 }
 
 async function saveBackendSnapshot(state) {
+  if (cloudClient.mode === "firebase-rtdb") {
+    const updatedAt = new Date().toISOString();
+    const response = await fetch(`${cloudClient.endpoint}/teams/${encodeURIComponent(teamId)}.json`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        updatedAt,
+        state
+      })
+    });
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(payload?.error || `HTTP ${response.status}`);
+    }
+
+    return {
+      ok: true,
+      teamId,
+      updatedAt
+    };
+  }
+
   const response = await fetch(cloudClient.endpoint, {
     method: "POST",
     headers: {
@@ -2577,7 +2636,7 @@ async function syncLocalToCloud() {
     lastCloudSyncAt = Date.now();
     updateLastSynced();
     cloudNeedsReconnect = false;
-    syncStatus.textContent = `Synced ${players.length} players to Google Sheets.`;
+    syncStatus.textContent = `Synced ${players.length} players to shared cloud.`;
   } finally {
     cloudSyncInFlight = Math.max(0, cloudSyncInFlight - 1);
   }
