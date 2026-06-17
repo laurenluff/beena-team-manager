@@ -208,6 +208,14 @@ main {
   font-weight: 750;
 }
 
+.sync-panel small {
+  display: block;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
 .sync-form {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

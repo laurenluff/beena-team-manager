@@ -87,8 +87,10 @@ const voiceTranscript = document.querySelector("#voiceTranscript");
 const loginForm = document.querySelector("#loginForm");
 const passwordInput = document.querySelector("#passwordInput");
 const signOutButton = document.querySelector("#signOutButton");
+const refreshSyncButton = document.querySelector("#refreshSyncButton");
 const syncTitle = document.querySelector("#syncTitle");
 const syncStatus = document.querySelector("#syncStatus");
+const lastSyncedText = document.querySelector("#lastSyncedText");
 const fixtureFilters = document.querySelector("#fixtureFilters");
 const fixtureDays = document.querySelector("#fixtureDays");
 const fixtureSummary = document.querySelector("#fixturesSummary");
@@ -110,6 +112,9 @@ let cloudNicknameColumnAvailable = true;
 let cloudFixturesAvailable = true;
 let cloudInitializationPromise = null;
 let cloudNeedsReconnect = false;
+let cloudAutoRefreshTimer = null;
+let cloudSyncInFlight = 0;
+let lastCloudSyncAt = 0;
 
 const rosterNames = [
   "Alice Allet",
@@ -2152,8 +2157,10 @@ async function setupCloudSync() {
   if (!cloudClient) {
     loginForm.hidden = true;
     signOutButton.hidden = true;
+    refreshSyncButton.hidden = true;
     syncTitle.textContent = "Local Mode";
     syncStatus.textContent = "Cloud sync is ready in the code. Add Supabase settings to config.js to connect phone and laptop.";
+    updateLastSynced(0);
     return;
   }
 
@@ -2162,9 +2169,19 @@ async function setupCloudSync() {
     signOutButton.hidden = true;
     syncTitle.textContent = "Cloud Sync On";
     syncStatus.textContent = "Shared cloud sync is on. Anyone with the live Beena link can edit this team data.";
+    refreshSyncButton.hidden = false;
+    refreshSyncButton.addEventListener("click", () => {
+      refreshCloudSnapshot("Refreshing cloud data...");
+    });
+    startCloudAutoRefresh();
     await queueInitializeCloudData();
     return;
   }
+
+  refreshSyncButton.hidden = false;
+  refreshSyncButton.addEventListener("click", () => {
+    refreshCloudSnapshot("Refreshing cloud data...");
+  });
 
   loginForm.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -2241,6 +2258,52 @@ function updateSyncUi() {
       ? "Enter the shared team password to sync on this device."
       : "Add sharedLoginEmail to config.js to enable shared team password sign-in.";
   }
+}
+
+function startCloudAutoRefresh() {
+  if (!cloudClient || cloudAutoRefreshTimer) return;
+
+  document.addEventListener("visibilitychange", handleCloudVisibilityRefresh);
+  globalThis.addEventListener("focus", handleCloudVisibilityRefresh);
+  cloudAutoRefreshTimer = globalThis.setInterval(() => {
+    refreshCloudSnapshot();
+  }, 15000);
+}
+
+function handleCloudVisibilityRefresh() {
+  if (document.visibilityState === "visible") {
+    refreshCloudSnapshot();
+  }
+}
+
+async function refreshCloudSnapshot(statusMessage = "") {
+  if (!cloudClient || cloudNeedsReconnect || cloudSyncInFlight > 0) return;
+  if (!publicTeamAccess && !currentUser) return;
+  if (cloudInitializationPromise) return;
+
+  if (statusMessage) {
+    syncStatus.textContent = statusMessage;
+  }
+
+  try {
+    await loadCloudData();
+  } catch (error) {
+    syncStatus.textContent = `Cloud refresh failed: ${error.message || error}`;
+  }
+}
+
+function formatLastSynced(timestamp) {
+  if (!timestamp) return "Not synced yet.";
+  return `Last synced ${new Date(timestamp).toLocaleString("en-AU", {
+    day: "numeric",
+    month: "short",
+    hour: "numeric",
+    minute: "2-digit"
+  })}.`;
+}
+
+function updateLastSynced(timestamp = lastCloudSyncAt) {
+  lastSyncedText.textContent = formatLastSynced(timestamp);
 }
 
 async function initializeCloudData() {
@@ -2368,6 +2431,8 @@ async function loadCloudData() {
   }
 
   cloudNeedsReconnect = false;
+  lastCloudSyncAt = Date.now();
+  updateLastSynced();
   syncStatus.textContent = lineupsError || fixturesError
     ? `Synced ${players.length} players. Run the latest SQL upgrades to sync lineups and fixtures.`
     : `Synced ${players.length} players.`;
@@ -2555,12 +2620,19 @@ function pickPreferredChoice(primaryValue, fallbackValue, defaultValue) {
 async function syncLocalToCloud() {
   if (!currentUser && !publicTeamAccess) return;
 
+  cloudSyncInFlight += 1;
   ensureCloudSafePlayerIds();
-  await mergeExistingCloudPlayers();
-  await upsertCloudPlayers(players);
-  await upsertCloudAttendance(attendanceToRows());
-  await upsertCloudLineups(lineupsToRows());
-  await upsertCloudFixtures(fixtures);
+  try {
+    await mergeExistingCloudPlayers();
+    await upsertCloudPlayers(players);
+    await upsertCloudAttendance(attendanceToRows());
+    await upsertCloudLineups(lineupsToRows());
+    await upsertCloudFixtures(fixtures);
+    lastCloudSyncAt = Date.now();
+    updateLastSynced();
+  } finally {
+    cloudSyncInFlight = Math.max(0, cloudSyncInFlight - 1);
+  }
 }
 
 async function mergeExistingCloudPlayers() {

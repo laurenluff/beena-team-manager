@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Murrumbeena Lions Team Manager</title>
-    <link rel="stylesheet" href="styles.css?v=20260527-1">
+    <link rel="stylesheet" href="styles.css?v=20260617-1">
   </head>
   <body>
     <header class="app-header">
@@ -39,11 +39,13 @@
           <p class="eyebrow dark">Cloud Sync</p>
           <h2 id="syncTitle">Local Mode</h2>
           <p id="syncStatus">Add Supabase settings to sync between phone and laptop.</p>
+          <small id="lastSyncedText">Not synced yet.</small>
         </div>
         <form class="sync-form" id="loginForm">
           <input id="passwordInput" type="password" autocomplete="current-password" placeholder="Team PIN / password">
           <button class="primary-button" type="submit">Unlock Team Sync</button>
         </form>
+        <button class="ghost-button" id="refreshSyncButton" type="button">Refresh Sync</button>
         <button class="ghost-button" id="signOutButton" type="button" hidden>Sign Out</button>
       </section>
 
@@ -264,7 +266,7 @@
     </dialog>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="config.js?v=20260527-1"></script>
-    <script src="app.js?v=20260527-1"></script>
+    <script src="config.js?v=20260617-1"></script>
+    <script src="app.js?v=20260617-1"></script>
   </body>
 </html>
