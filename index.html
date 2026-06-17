@@ -36,13 +36,13 @@
     <main>
       <section class="sync-panel" aria-label="Cloud sync">
         <div>
-          <p class="eyebrow dark">Cloud Sync</p>
+          <p class="eyebrow dark">Shared Sync</p>
           <h2 id="syncTitle">Local Mode</h2>
-          <p id="syncStatus">Add Supabase settings to sync between phone and laptop.</p>
+          <p id="syncStatus">Add your Google Apps Script URL to connect shared sync between phone and laptop.</p>
           <small id="lastSyncedText">Not synced yet.</small>
         </div>
-        <form class="sync-form" id="loginForm">
-          <input id="passwordInput" type="password" autocomplete="current-password" placeholder="Team PIN / password">
+        <form class="sync-form" id="loginForm" hidden>
+          <input id="passwordInput" type="password" autocomplete="current-password" placeholder="Hidden legacy login">
           <button class="primary-button" type="submit">Unlock Team Sync</button>
         </form>
         <button class="ghost-button" id="refreshSyncButton" type="button">Refresh Sync</button>
@@ -265,8 +265,7 @@
       <div class="crm-list" id="crmList" aria-label="Editable player list"></div>
     </dialog>
 
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="config.js?v=20260617-1"></script>
-    <script src="app.js?v=20260617-1"></script>
+    <script src="config.js?v=20260617-2"></script>
+    <script src="app.js?v=20260617-2"></script>
   </body>
 </html>

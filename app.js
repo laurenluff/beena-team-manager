@@ -96,13 +96,13 @@ const fixtureDays = document.querySelector("#fixtureDays");
 const fixtureSummary = document.querySelector("#fixturesSummary");
 const showPastFixturesInput = document.querySelector("#showPastFixtures");
 const SpeechRecognition = globalThis.SpeechRecognition || globalThis.webkitSpeechRecognition;
-const supabaseSettings = globalThis.FOOTY_SUPABASE || {};
-const teamId = supabaseSettings.teamId || "beena";
-const sharedLoginEmail = (supabaseSettings.sharedLoginEmail || "").trim().toLowerCase();
-const publicTeamAccess = Boolean(supabaseSettings.publicTeamAccess);
-const hasCloudSettings = Boolean(supabaseSettings.url && supabaseSettings.anonKey && teamId);
-const cloudClient = hasCloudSettings && globalThis.supabase
-  ? globalThis.supabase.createClient(supabaseSettings.url, supabaseSettings.anonKey)
+const backendSettings = globalThis.FOOTY_BACKEND || {};
+const teamId = backendSettings.teamId || "beena";
+const appsScriptUrl = String(backendSettings.appsScriptUrl || "").trim();
+const publicTeamAccess = Boolean(appsScriptUrl && teamId);
+const hasCloudSettings = publicTeamAccess;
+const cloudClient = hasCloudSettings
+  ? { endpoint: appsScriptUrl, mode: backendSettings.mode || "google-sheets" }
   : null;
 
 let recognition = null;
@@ -116,6 +116,7 @@ let cloudAutoRefreshTimer = null;
 let cloudSyncInFlight = 0;
 let cloudLoadPromise = null;
 let lastCloudSyncAt = 0;
+let lastKnownCloudRevision = "";
 
 const rosterNames = [
   "Alice Allet",
@@ -2158,107 +2159,35 @@ async function setupCloudSync() {
   if (!cloudClient) {
     loginForm.hidden = true;
     signOutButton.hidden = true;
-    refreshSyncButton.hidden = true;
+    refreshSyncButton.hidden = false;
     syncTitle.textContent = "Local Mode";
-    syncStatus.textContent = "Cloud sync is ready in the code. Add Supabase settings to config.js to connect phone and laptop.";
+    syncStatus.textContent = "Add your Google Apps Script URL to config.js to sync between phone and laptop.";
     updateLastSynced(0);
     return;
   }
 
-  if (publicTeamAccess) {
-    loginForm.hidden = true;
-    signOutButton.hidden = true;
-    syncTitle.textContent = "Cloud Sync On";
-    syncStatus.textContent = "Shared cloud sync is on. Anyone with the live Beena link can edit this team data.";
-    refreshSyncButton.hidden = false;
-    refreshSyncButton.addEventListener("click", () => {
-      refreshCloudSnapshot("Refreshing cloud data...");
-    });
-    startCloudAutoRefresh();
-    await queueInitializeCloudData();
-    return;
-  }
-
+  loginForm.hidden = true;
+  signOutButton.hidden = true;
+  syncTitle.textContent = "Shared Sync On";
+  syncStatus.textContent = "Shared Google Sheets sync is on. Changes made on one device will refresh onto the others.";
   refreshSyncButton.hidden = false;
   refreshSyncButton.addEventListener("click", () => {
-    refreshCloudSnapshot("Refreshing cloud data...");
+    refreshCloudSnapshot("Refreshing shared data...");
   });
-
-  loginForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const password = passwordInput.value.trim();
-    if (!sharedLoginEmail) {
-      syncStatus.textContent = "Add sharedLoginEmail to config.js before using the team password sign-in.";
-      return;
-    }
-    if (!password) return;
-
-    const { error } = await cloudClient.auth.signInWithPassword({
-      email: sharedLoginEmail,
-      password
-    });
-
-    if (!error) {
-      passwordInput.value = "";
-    }
-    syncStatus.textContent = error
-      ? `Team sign-in failed: ${error.message}`
-      : "Signing in...";
-  });
-
-  signOutButton.addEventListener("click", async () => {
-    await cloudClient.auth.signOut();
-    currentUser = null;
-    cloudNeedsReconnect = false;
-    updateSyncUi();
-  });
-
-  cloudClient.auth.onAuthStateChange(async (_event, session) => {
-    currentUser = session?.user || null;
-    if (!currentUser) cloudNeedsReconnect = false;
-    updateSyncUi();
-    if (currentUser) {
-      await queueInitializeCloudData();
-    }
-  });
-
-  const { data } = await cloudClient.auth.getSession();
-  currentUser = data.session?.user || null;
+  currentUser = { email: "shared-google-sheet" };
   updateSyncUi();
-
-  if (currentUser) {
-    await queueInitializeCloudData();
-  }
+  startCloudAutoRefresh();
+  await queueInitializeCloudData();
 }
 
 function updateSyncUi() {
   if (!cloudClient) return;
-
-  if (publicTeamAccess) {
-    loginForm.hidden = true;
-    signOutButton.hidden = true;
-    syncTitle.textContent = "Cloud Sync On";
-    syncStatus.textContent = cloudNeedsReconnect
-      ? "Shared cloud sync needs the public Supabase policies updated."
-      : "Shared cloud sync is on. Anyone with the live Beena link can edit this team data.";
-    return;
-  }
-
-  if (currentUser) {
-    loginForm.hidden = !cloudNeedsReconnect;
-    signOutButton.hidden = false;
-    syncTitle.textContent = "Cloud Sync On";
-    syncStatus.textContent = cloudNeedsReconnect
-      ? `Signed in as ${currentUser.email}, but cloud needs reconnect. Enter the team password below or sign out.`
-      : `Signed in as ${currentUser.email}. Changes sync with approved Beena team members.`;
-  } else {
-    loginForm.hidden = false;
-    signOutButton.hidden = true;
-    syncTitle.textContent = "Cloud Sync";
-    syncStatus.textContent = sharedLoginEmail
-      ? "Enter the shared team password to sync on this device."
-      : "Add sharedLoginEmail to config.js to enable shared team password sign-in.";
-  }
+  loginForm.hidden = true;
+  signOutButton.hidden = true;
+  syncTitle.textContent = "Shared Sync On";
+  syncStatus.textContent = cloudNeedsReconnect
+    ? "Shared sync needs attention. Check your Google Apps Script deployment URL and refresh."
+    : "Shared Google Sheets sync is on. Changes made on one device will refresh onto the others.";
 }
 
 function startCloudAutoRefresh() {
@@ -2352,97 +2281,36 @@ async function queueInitializeCloudData() {
 
 async function loadCloudData() {
   if (cloudLoadPromise) return cloudLoadPromise;
-
-  if (!currentUser && !publicTeamAccess) return false;
+  if (!publicTeamAccess) return false;
 
   cloudLoadPromise = (async () => {
     cloudNeedsReconnect = false;
-    syncStatus.textContent = "Loading cloud data...";
-
-    let results;
+    syncStatus.textContent = "Loading shared data...";
+    let payload;
 
     try {
-      results = await withTimeout(Promise.all([
-        fetchCloudPlayers(),
-        cloudClient
-          .from("attendance")
-          .select("player_id,round,session")
-          .eq("team_id", teamId),
-        cloudClient
-          .from("lineups")
-          .select("round,spot_id,player_id")
-          .eq("team_id", teamId),
-        fetchCloudFixtures()
-      ]), 30000, "Cloud load timed out. Tap Refresh Sync and try again.");
+      payload = await withTimeout(fetchBackendSnapshot(), 30000, "Cloud load timed out. Please refresh and try again.");
     } catch (error) {
-      if (!publicTeamAccess) {
-        cloudNeedsReconnect = true;
-        updateSyncUi();
-      }
+      cloudNeedsReconnect = true;
+      updateSyncUi();
       syncStatus.textContent = `Cloud load failed: ${error.message || error}`;
       render();
       return false;
     }
 
-    const [
-      { data: cloudPlayers = [], error: playersError },
-      { data: cloudAttendance = [], error: attendanceError },
-      { data: cloudLineups = [], error: lineupsError },
-      { data: cloudFixtures = [], error: fixturesError }
-    ] = results;
-
-    if (playersError || attendanceError) {
-      if (!publicTeamAccess) {
-        cloudNeedsReconnect = true;
-        updateSyncUi();
-      }
-      syncStatus.textContent = `Cloud load failed: ${(playersError || attendanceError).message}`;
-      render();
-      return false;
-    }
-
-    if (cloudPlayers.length) {
-      const localNicknames = new Map(players.map((player) => [player.id, player.nickname || ""]));
-      const { players: uniqueCloudPlayers, idMap } = dedupePlayersByName(cloudPlayers);
-      players = uniqueCloudPlayers.map((player) => ({
-        id: player.id,
-        name: player.name,
-        nickname: player.nickname ?? localNicknames.get(player.id) ?? "",
-        number: player.number || "",
-        position: player.position || "Utility",
-        status: player.status || "Available",
-        notes: player.notes || "",
-        training: false,
-        match: false
-      }));
-      attendance = rowsToAttendance(remapCloudPlayerRows(cloudAttendance || [], idMap, "player_id"));
-      lineups = rowsToLineups(remapCloudPlayerRows(lineupsError ? [] : cloudLineups || [], idMap, "player_id"));
-      if (!fixturesError && cloudFixtures?.length) {
-        fixtures = cloudFixtures.map(rowToFixture);
-      }
-      normalizeAttendance();
-      normalizeLineups();
-      selectLatestRoundWithData();
-      savePlayers();
-      saveAttendance();
-      saveLineups();
-      saveFixtures();
-      if (!fixturesError && !cloudFixtures?.length && fixtures.length) {
-        await upsertCloudFixtures(fixtures);
-      }
-      renderRoundButtons();
-      render();
-    } else {
-      render();
+    const remoteState = payload?.state;
+    if (remoteState?.players?.length) {
+      applyCloudSnapshot(remoteState);
+      lastKnownCloudRevision = String(payload.updatedAt || "");
     }
 
     cloudNeedsReconnect = false;
     lastCloudSyncAt = Date.now();
     updateLastSynced();
-    syncStatus.textContent = lineupsError || fixturesError
-      ? `Synced ${players.length} players. Run the latest SQL upgrades to sync lineups and fixtures.`
-      : `Synced ${players.length} players.`;
-    return cloudPlayers.length > 0;
+    syncStatus.textContent = payload?.updatedAt
+      ? `Synced ${players.length} players from Google Sheets.`
+      : `Shared sync is ready. Your next change will create the first shared snapshot.`;
+    return Boolean(remoteState?.players?.length);
   })();
 
   try {
@@ -2512,6 +2380,76 @@ function withTimeout(promise, timeoutMs, timeoutMessage) {
       globalThis.setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
     })
   ]);
+}
+
+async function fetchBackendSnapshot() {
+  const url = new URL(cloudClient.endpoint);
+  url.searchParams.set("teamId", teamId);
+  url.searchParams.set("t", Date.now());
+
+  const response = await fetch(url.toString(), {
+    method: "GET",
+    cache: "no-store"
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || payload.ok === false) {
+    throw new Error(payload.error || `HTTP ${response.status}`);
+  }
+  return payload;
+}
+
+async function saveBackendSnapshot(state) {
+  const response = await fetch(cloudClient.endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "text/plain;charset=utf-8"
+    },
+    body: JSON.stringify({
+      action: "save",
+      teamId,
+      state,
+      updatedAt: new Date().toISOString()
+    })
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || payload.ok === false) {
+    throw new Error(payload.error || `HTTP ${response.status}`);
+  }
+  return payload;
+}
+
+function applyCloudSnapshot(snapshot) {
+  const nextPlayers = Array.isArray(snapshot.players) ? snapshot.players : [];
+  const nextAttendance = snapshot.attendance && typeof snapshot.attendance === "object" ? snapshot.attendance : {};
+  const nextLineups = snapshot.lineups && typeof snapshot.lineups === "object" ? snapshot.lineups : {};
+  const nextFixtures = Array.isArray(snapshot.fixtures) ? snapshot.fixtures : [];
+
+  players = nextPlayers.map((player) => ({
+    id: player.id || makeId(),
+    name: player.name || "",
+    nickname: player.nickname || "",
+    number: player.number || "",
+    position: player.position || "Utility",
+    status: player.status || "Available",
+    notes: player.notes || "",
+    training: false,
+    match: false
+  }));
+  attendance = nextAttendance;
+  lineups = nextLineups;
+  fixtures = nextFixtures;
+  normalizeAttendance();
+  normalizeLineups();
+  dedupeLocalPlayers();
+  selectLatestRoundWithData();
+  savePlayers();
+  saveAttendance();
+  saveLineups();
+  saveFixtures();
+  renderRoundButtons();
+  render();
 }
 
 function snapshotLocalState() {
@@ -2631,18 +2569,15 @@ function pickPreferredChoice(primaryValue, fallbackValue, defaultValue) {
 }
 
 async function syncLocalToCloud() {
-  if (!currentUser && !publicTeamAccess) return;
-
+  if (!publicTeamAccess) return;
   cloudSyncInFlight += 1;
-  ensureCloudSafePlayerIds();
   try {
-    await mergeExistingCloudPlayers();
-    await upsertCloudPlayers(players);
-    await upsertCloudAttendance(attendanceToRows());
-    await upsertCloudLineups(lineupsToRows());
-    await upsertCloudFixtures(fixtures);
+    const payload = await saveBackendSnapshot(snapshotLocalState());
+    lastKnownCloudRevision = String(payload?.updatedAt || Date.now());
     lastCloudSyncAt = Date.now();
     updateLastSynced();
+    cloudNeedsReconnect = false;
+    syncStatus.textContent = `Synced ${players.length} players to Google Sheets.`;
   } finally {
     cloudSyncInFlight = Math.max(0, cloudSyncInFlight - 1);
   }
@@ -2768,31 +2703,8 @@ function ensureCloudSafePlayerIds() {
 }
 
 async function upsertCloudPlayers(playerList) {
-  if ((!currentUser && !publicTeamAccess) || !playerList.length) return;
-
-  const rows = playerList.map((player) => ({
-    id: player.id,
-    team_id: teamId,
-    user_id: currentUser?.id || null,
-    name: player.name,
-    ...(cloudNicknameColumnAvailable ? { nickname: player.nickname || "" } : {}),
-    number: player.number || "",
-    position: player.position || "Utility",
-    status: player.status || "Available",
-    notes: player.notes || ""
-  }));
-
-  const { error } = await cloudClient.from("players").upsert(rows);
-  if (error) {
-    if (cloudNicknameColumnAvailable && isMissingNicknameColumn(error)) {
-      cloudNicknameColumnAvailable = false;
-      await upsertCloudPlayers(playerList);
-      syncStatus.textContent = "Nicknames are saved on this device. Run nickname_upgrade.sql in Supabase to sync them.";
-      return;
-    }
-    syncStatus.textContent = `Player sync failed: ${error.message}`;
-    throw error;
-  }
+  if (!playerList.length) return;
+  return syncLocalToCloud();
 }
 
 function isMissingNicknameColumn(error) {
@@ -2800,130 +2712,34 @@ function isMissingNicknameColumn(error) {
 }
 
 async function upsertCloudAttendance(rows) {
-  if ((!currentUser && !publicTeamAccess) || !rows.length) return;
-
-  const payload = rows.map((row) => ({
-    team_id: teamId,
-    user_id: currentUser?.id || null,
-    player_id: row.playerId,
-    round: row.round,
-    session: row.session
-  }));
-
-  const { error } = await cloudClient.from("attendance").upsert(payload);
-  if (error) {
-    syncStatus.textContent = `Attendance sync failed: ${error.message}`;
-    throw error;
-  }
+  if (!rows.length) return;
+  return syncLocalToCloud();
 }
 
 async function deleteCloudAttendance(playerId, round, session) {
-  if (!currentUser && !publicTeamAccess) return;
-
-  const { error } = await cloudClient
-    .from("attendance")
-    .delete()
-    .eq("team_id", teamId)
-    .eq("player_id", playerId)
-    .eq("round", round)
-    .eq("session", session);
-
-  if (error) {
-    syncStatus.textContent = `Attendance sync failed: ${error.message}`;
-    throw error;
-  }
+  return syncLocalToCloud();
 }
 
 async function upsertCloudLineups(rows) {
-  if ((!currentUser && !publicTeamAccess) || !rows.length) return;
-
-  const payload = rows.map((row) => ({
-    team_id: teamId,
-    user_id: currentUser?.id || null,
-    round: row.round,
-    spot_id: row.spotId,
-    player_id: row.playerId
-  }));
-
-  const { error } = await cloudClient.from("lineups").upsert(payload);
-  if (error) {
-    syncStatus.textContent = `Lineup sync failed: ${error.message}`;
-    throw error;
-  }
+  if (!rows.length) return;
+  return syncLocalToCloud();
 }
 
 async function deleteCloudLineupSpot(round, spotId) {
-  if (!currentUser && !publicTeamAccess) return;
-
-  const { error } = await cloudClient
-    .from("lineups")
-    .delete()
-    .eq("team_id", teamId)
-    .eq("round", round)
-    .eq("spot_id", spotId);
-
-  if (error) {
-    syncStatus.textContent = `Lineup sync failed: ${error.message}`;
-    throw error;
-  }
+  return syncLocalToCloud();
 }
 
 async function deleteCloudLineupRound(round) {
-  if (!currentUser && !publicTeamAccess) return;
-
-  const { error } = await cloudClient
-    .from("lineups")
-    .delete()
-    .eq("team_id", teamId)
-    .eq("round", round);
-
-  if (error) {
-    syncStatus.textContent = `Lineup sync failed: ${error.message}`;
-    throw error;
-  }
+  return syncLocalToCloud();
 }
 
 async function upsertCloudFixtures(fixtureList) {
-  if ((!currentUser && !publicTeamAccess) || !cloudFixturesAvailable || !fixtureList.length) return;
-
-  const payload = fixtureList.map((fixture) => ({
-    id: fixture.id,
-    team_id: teamId,
-    user_id: currentUser?.id || null,
-    round: fixture.round || "",
-    date: fixture.date,
-    time: fixture.time || null,
-    team: fixture.team,
-    opponent: fixture.opponent,
-    venue: fixture.venue,
-    notes: fixture.notes || ""
-  }));
-
-  const { error } = await cloudClient.from("fixtures").upsert(payload);
-  if (error) {
-    if (isMissingFixturesTable(error)) {
-      cloudFixturesAvailable = false;
-      syncStatus.textContent = "Fixtures save locally. Run fixtures_upgrade.sql in Supabase to sync them.";
-      return;
-    }
-    syncStatus.textContent = `Fixture sync failed: ${error.message}`;
-    throw error;
-  }
+  if (!fixtureList.length) return;
+  return syncLocalToCloud();
 }
 
 async function deleteCloudPlayer(playerId) {
-  if (!currentUser && !publicTeamAccess) return;
-
-  const { error } = await cloudClient
-    .from("players")
-    .delete()
-    .eq("team_id", teamId)
-    .eq("id", playerId);
-
-  if (error) {
-    syncStatus.textContent = `Player delete failed: ${error.message}`;
-    throw error;
-  }
+  return syncLocalToCloud();
 }
 
 function attendanceToRows() {
