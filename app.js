@@ -114,6 +114,7 @@ let cloudInitializationPromise = null;
 let cloudNeedsReconnect = false;
 let cloudAutoRefreshTimer = null;
 let cloudSyncInFlight = 0;
+let cloudLoadPromise = null;
 let lastCloudSyncAt = 0;
 
 const rosterNames = [
@@ -2267,7 +2268,7 @@ function startCloudAutoRefresh() {
   globalThis.addEventListener("focus", handleCloudVisibilityRefresh);
   cloudAutoRefreshTimer = globalThis.setInterval(() => {
     refreshCloudSnapshot();
-  }, 15000);
+  }, 30000);
 }
 
 function handleCloudVisibilityRefresh() {
@@ -2277,19 +2278,17 @@ function handleCloudVisibilityRefresh() {
 }
 
 async function refreshCloudSnapshot(statusMessage = "") {
-  if (!cloudClient || cloudNeedsReconnect || cloudSyncInFlight > 0) return;
+  if (!cloudClient || cloudSyncInFlight > 0) return;
   if (!publicTeamAccess && !currentUser) return;
   if (cloudInitializationPromise) return;
+  if (cloudLoadPromise) return cloudLoadPromise;
+  if (!publicTeamAccess && cloudNeedsReconnect) return;
 
   if (statusMessage) {
     syncStatus.textContent = statusMessage;
   }
 
-  try {
-    await loadCloudData();
-  } catch (error) {
-    syncStatus.textContent = `Cloud refresh failed: ${error.message || error}`;
-  }
+  return loadCloudData();
 }
 
 function formatLastSynced(timestamp) {
@@ -2352,91 +2351,105 @@ async function queueInitializeCloudData() {
 }
 
 async function loadCloudData() {
+  if (cloudLoadPromise) return cloudLoadPromise;
+
   if (!currentUser && !publicTeamAccess) return false;
 
-  cloudNeedsReconnect = false;
-  syncStatus.textContent = "Loading cloud data...";
+  cloudLoadPromise = (async () => {
+    cloudNeedsReconnect = false;
+    syncStatus.textContent = "Loading cloud data...";
 
-  let results;
+    let results;
+
+    try {
+      results = await withTimeout(Promise.all([
+        fetchCloudPlayers(),
+        cloudClient
+          .from("attendance")
+          .select("player_id,round,session")
+          .eq("team_id", teamId),
+        cloudClient
+          .from("lineups")
+          .select("round,spot_id,player_id")
+          .eq("team_id", teamId),
+        fetchCloudFixtures()
+      ]), 30000, "Cloud load timed out. Tap Refresh Sync and try again.");
+    } catch (error) {
+      if (!publicTeamAccess) {
+        cloudNeedsReconnect = true;
+        updateSyncUi();
+      }
+      syncStatus.textContent = `Cloud load failed: ${error.message || error}`;
+      render();
+      return false;
+    }
+
+    const [
+      { data: cloudPlayers = [], error: playersError },
+      { data: cloudAttendance = [], error: attendanceError },
+      { data: cloudLineups = [], error: lineupsError },
+      { data: cloudFixtures = [], error: fixturesError }
+    ] = results;
+
+    if (playersError || attendanceError) {
+      if (!publicTeamAccess) {
+        cloudNeedsReconnect = true;
+        updateSyncUi();
+      }
+      syncStatus.textContent = `Cloud load failed: ${(playersError || attendanceError).message}`;
+      render();
+      return false;
+    }
+
+    if (cloudPlayers.length) {
+      const localNicknames = new Map(players.map((player) => [player.id, player.nickname || ""]));
+      const { players: uniqueCloudPlayers, idMap } = dedupePlayersByName(cloudPlayers);
+      players = uniqueCloudPlayers.map((player) => ({
+        id: player.id,
+        name: player.name,
+        nickname: player.nickname ?? localNicknames.get(player.id) ?? "",
+        number: player.number || "",
+        position: player.position || "Utility",
+        status: player.status || "Available",
+        notes: player.notes || "",
+        training: false,
+        match: false
+      }));
+      attendance = rowsToAttendance(remapCloudPlayerRows(cloudAttendance || [], idMap, "player_id"));
+      lineups = rowsToLineups(remapCloudPlayerRows(lineupsError ? [] : cloudLineups || [], idMap, "player_id"));
+      if (!fixturesError && cloudFixtures?.length) {
+        fixtures = cloudFixtures.map(rowToFixture);
+      }
+      normalizeAttendance();
+      normalizeLineups();
+      selectLatestRoundWithData();
+      savePlayers();
+      saveAttendance();
+      saveLineups();
+      saveFixtures();
+      if (!fixturesError && !cloudFixtures?.length && fixtures.length) {
+        await upsertCloudFixtures(fixtures);
+      }
+      renderRoundButtons();
+      render();
+    } else {
+      render();
+    }
+
+    cloudNeedsReconnect = false;
+    lastCloudSyncAt = Date.now();
+    updateLastSynced();
+    syncStatus.textContent = lineupsError || fixturesError
+      ? `Synced ${players.length} players. Run the latest SQL upgrades to sync lineups and fixtures.`
+      : `Synced ${players.length} players.`;
+    return cloudPlayers.length > 0;
+  })();
 
   try {
-    results = await withTimeout(Promise.all([
-      fetchCloudPlayers(),
-      cloudClient
-        .from("attendance")
-        .select("player_id,round,session")
-        .eq("team_id", teamId),
-      cloudClient
-        .from("lineups")
-        .select("round,spot_id,player_id")
-        .eq("team_id", teamId),
-      fetchCloudFixtures()
-    ]), 15000, "Cloud load timed out. Please refresh and try again.");
-  } catch (error) {
-    cloudNeedsReconnect = true;
-    updateSyncUi();
-    syncStatus.textContent = `Cloud load failed: ${error.message || error}`;
-    render();
-    return false;
+    return await cloudLoadPromise;
+  } finally {
+    cloudLoadPromise = null;
   }
-
-  const [
-    { data: cloudPlayers = [], error: playersError },
-    { data: cloudAttendance = [], error: attendanceError },
-    { data: cloudLineups = [], error: lineupsError },
-    { data: cloudFixtures = [], error: fixturesError }
-  ] = results;
-
-  if (playersError || attendanceError) {
-    cloudNeedsReconnect = true;
-    updateSyncUi();
-    syncStatus.textContent = `Cloud load failed: ${(playersError || attendanceError).message}`;
-    render();
-    return false;
-  }
-
-  if (cloudPlayers.length) {
-    const localNicknames = new Map(players.map((player) => [player.id, player.nickname || ""]));
-    const { players: uniqueCloudPlayers, idMap } = dedupePlayersByName(cloudPlayers);
-    players = uniqueCloudPlayers.map((player) => ({
-      id: player.id,
-      name: player.name,
-      nickname: player.nickname ?? localNicknames.get(player.id) ?? "",
-      number: player.number || "",
-      position: player.position || "Utility",
-      status: player.status || "Available",
-      notes: player.notes || "",
-      training: false,
-      match: false
-    }));
-    attendance = rowsToAttendance(remapCloudPlayerRows(cloudAttendance || [], idMap, "player_id"));
-    lineups = rowsToLineups(remapCloudPlayerRows(lineupsError ? [] : cloudLineups || [], idMap, "player_id"));
-    if (!fixturesError && cloudFixtures?.length) {
-      fixtures = cloudFixtures.map(rowToFixture);
-    }
-    normalizeAttendance();
-    normalizeLineups();
-    selectLatestRoundWithData();
-    savePlayers();
-    saveAttendance();
-    saveLineups();
-    saveFixtures();
-    if (!fixturesError && !cloudFixtures?.length && fixtures.length) {
-      await upsertCloudFixtures(fixtures);
-    }
-    renderRoundButtons();
-    render();
-  } else {
-    render();
-  }
-
-  cloudNeedsReconnect = false;
-  lastCloudSyncAt = Date.now();
-  updateLastSynced();
-  syncStatus.textContent = lineupsError || fixturesError
-    ? `Synced ${players.length} players. Run the latest SQL upgrades to sync lineups and fixtures.`
-    : `Synced ${players.length} players.`;
-  return cloudPlayers.length > 0;
 }
 
 async function fetchCloudPlayers() {
